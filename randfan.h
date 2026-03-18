@@ -168,6 +168,8 @@ void fisher_yates(uint32_t * lis, uint32_t len, uint64_t* rng_state) {
 // H-REP OF N-1 SIMPLEX
 // ====================
 int det(int *M, int dim) {
+    // computes the dimension of M, a dim-by-dim matrix
+
     // base case
     if (dim == 2)
         return M[2* 0+0]*M[2* 1+1] - M[2* 1+0]*M[2* 0+1];
@@ -195,18 +197,20 @@ int det(int *M, int dim) {
     return out;
 }
 
-void hrep(int *R, int dim, int *x) {
-    // computes a normal x to R... Rn=0
+void simp_facet_normal(int *R, int dim, int *x) {
+    // for R the (row-wise) rays of a facet of a simplex, compute the normal x
+    // i.e., the vector x such that Rx=0.
     // does so by setting x=(-1)^k det(R[:,:!=i])
+
     int R_trim[(dim-1)*(dim-1)];
     int sign = -1;
     for (int xi=0; xi<dim; ++xi) {
         // update the sign
         sign *= -1;
 
-        // get the trimmed arr
+        // get the trimmed arr - skipping column-xi
         for (int jtrim=0; jtrim<dim-1; ++jtrim) {
-            int jumped = (jtrim >= xi); // whether we skipped row-i
+            int jumped = (jtrim >= xi); // whether we skipped column-xi
             for (int itrim=0; itrim<dim-1; ++itrim) {
                 R_trim[(dim-1)* itrim+jtrim] = R[dim* itrim+(jtrim+jumped)];
             }
@@ -214,6 +218,36 @@ void hrep(int *R, int dim, int *x) {
 
         // set x[i]
         x[xi] = sign*det(R_trim,dim-1);
+    }
+}
+
+void hrep(int *R, int dim, int *H) {
+    // get the inwards-facing H-representation of the simplex
+    // (iterate over all facets, get the normal, orient so it faces inwards)
+
+    int R_facet[(dim-1)*dim];
+    for (int i=0; i<dim; ++i) {
+        // get the rays corresponding to this facet
+        for (int ifacet=0; ifacet<dim-1; ++ifacet) {
+            int jumped = (ifacet >= i);
+            for (int jfacet=0; jfacet<dim; ++jfacet) {
+                R_facet[dim* ifacet+jfacet] = R[dim* (ifacet+jumped)+jfacet];
+            }
+        }
+
+        // get the normal
+        simp_facet_normal(R_facet, dim, &H[i*dim]);
+
+        // ensure it is inwards-facing
+        int dot  = 0;
+        for (int k=0; k<dim; ++k)
+            dot += H[i*dim + k] * R[dim* i+k];
+
+        if (dot<0) {
+            for (int k=0; k<dim; ++k)
+                H[i*dim+k] *= -1;
+        }
+
     }
 }
 
@@ -267,9 +301,44 @@ int randfan(
     // Fisher-Yates shuffling
     fisher_yates(inds, num_vecs, s);
 
+    // get an initial simplex
+    uint32_t seed_simp[dim];
+    for (int i=0; i<dim; ++i)
+        seed_simp[i] = i;
+
+    // DEBUG PRINT HREP
+    int seed_simp_H[dim*dim];
+    int seed_simp_R[dim*dim];
+    printf("[");
+    for (int i=0; i<dim; ++i) {
+        printf("[");
+        for (int j=0; j<dim; ++j) {
+            seed_simp_R[dim* i+j] = vecs[dim* seed_simp[i]+j];
+            printf("%d,",seed_simp_R[dim* i+j]);
+        }
+        printf("],");
+    }
+    printf("]\n");
+    hrep(seed_simp_R, dim, seed_simp_H);
+
+    printf("[");
+    for (int i=0; i<dim; ++i) {
+        printf("[");
+        for (int j=0; j<dim; ++j) {
+            printf("%d,",seed_simp_H[dim* i+j]);
+        }
+        printf("],");
+    }
+    printf("]\n");
+
+    return 0;
+
+
+
+
     // DEBUG PRINT NORMAL
     int normal[dim];
-    hrep(vecs, dim, normal);
+    simp_facet_normal(vecs, dim, normal);
     for (int i=0; i<dim; ++i) {
         printf("%d,",normal[i]);
     }
