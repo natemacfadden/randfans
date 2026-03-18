@@ -167,24 +167,24 @@ void fisher_yates(uint32_t * lis, uint32_t len, uint64_t* rng_state) {
 
 // H-REP OF N-1 SIMPLEX
 // ====================
-int det(int * M, int n) {
+int det(int *M, int dim) {
     // base case
-    if (n == 2)
+    if (dim == 2)
         return M[2* 0+0]*M[2* 1+1] - M[2* 1+0]*M[2* 0+1];
 
     // recurse
     int out = 0;
-    int M_trim[(n-1)*(n-1)];
+    int M_trim[(dim-1)*(dim-1)];
     int sign = -1;
-    for (int i=0; i<n; ++i) {
+    for (int i=0; i<dim; ++i) {
         // update the sign
         sign *= -1;
 
         // trim ith row and 0th column
-        for (int itrim=0; itrim<n-1; ++itrim) {
+        for (int itrim=0; itrim<dim-1; ++itrim) {
             int jumped = (itrim >= i); // whether we skipped row-i
-            for (int jtrim=0; jtrim<n-1; ++jtrim) {
-                M_trim[(n-1)* itrim+jtrim] = M[n* (itrim+jumped)+(jtrim+1)];
+            for (int jtrim=0; jtrim<dim-1; ++jtrim) {
+                M_trim[(dim-1)* itrim+jtrim] = M[dim* (itrim+jumped)+(jtrim+1)];
             }
         }
 
