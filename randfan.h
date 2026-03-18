@@ -127,9 +127,7 @@ uint64_t splitmix64(uint64_t *state) {
     return z ^ (z >> 31);
 }
 
-
-// RANDFAN BEGINS
-// ==============
+// Fisher-Yates
 void fisher_yates(uint32_t * lis, uint32_t len, uint64_t* rng_state) {
     uint64_t j;
 
@@ -139,6 +137,61 @@ void fisher_yates(uint32_t * lis, uint32_t len, uint64_t* rng_state) {
     }
 }
 
+// H-REP OF N-1 SIMPLEX
+// ====================
+int det(int * M, int n) {
+    // base case
+    if (n == 2)
+        return M[2* 0+0]*M[2* 1+1] - M[2* 1+0]*M[2* 0+1];
+
+    // recurse
+    int out = 0;
+    int M_trim[(n-1)*(n-1)];
+    int sign = -1;
+    for (int i=0; i<n; ++i) {
+        // update the sign
+        sign *= -1;
+
+        // trim ith row and 0th column
+        for (int itrim=0; itrim<n-1; ++itrim) {
+            int jumped = (itrim >= i); // whether we skipped row-i
+            for (int jtrim=0; jtrim<n-1; ++jtrim) {
+                M_trim[(n-1)* itrim+jtrim] = M[n* (itrim+jumped)+(jtrim+1)];
+            }
+        }
+
+        // Laplace expansion
+        out += sign*M[n* i+0]*det(M_trim, n-1);
+    }
+
+    return out;
+}
+
+void hrep(int *R, int dim, int *x) {
+    // computes a normal x to R... Rn=0
+    // does so by setting x=(-1)^k det(R[:,:!=i])
+    int R_trim[(dim-1)*(dim-1)];
+    int sign = -1;
+    for (int xi=0; xi<dim; ++xi) {
+        // update the sign
+        sign *= -1;
+
+        // get the trimmed arr
+        for (int jtrim=0; jtrim<dim-1; ++jtrim) {
+            int jumped = (jtrim >= xi); // whether we skipped row-i
+            for (int itrim=0; itrim<dim-1; ++itrim) {
+                R_trim[(dim-1)* itrim+jtrim] = R[dim* itrim+(jtrim+jumped)];
+            }
+        }
+
+        // set x[i]
+        x[xi] = sign*det(R_trim,dim-1);
+    }
+}
+
+
+// RANDFAN BEGINS
+// ==============
 int randfan(
     int * vecs,
     int dim,
@@ -161,16 +214,31 @@ int randfan(
     // Fisher-Yates shuffling
     fisher_yates(inds, num_vecs, s);
 
+    // DEBUG PRINT NORMAL
+    int normal[dim];
+    hrep(vecs, dim, normal);
+    for (int i=0; i<dim; ++i) {
+        printf("%d,",normal[i]);
+    }
+    printf("\n");
+
     // DEBUG PRINT vecs
     int vi;
     printf("[");
     for (int ii=0; ii<num_vecs; ++ii) {
         vi = inds[ii]; // this allows the index list to shuffle
-        printf("[");
-        for (int di=0; di<dim; ++di) {
-            printf("%d,",vecs[di + vi*dim]);
+
+        // DEBUG
+        if (1) {
+            printf("[");
+            for (int di=0; di<dim; ++di) {
+                printf("%d,",vecs[di + vi*dim]);
+            }
+            printf("],");
+        } else if (1) {
+            printf("%d,", vi);
         }
-        printf("],");
+        
     }
     printf("]\n");
 
