@@ -398,14 +398,12 @@ int randfan(
         hrep(seed_simp_R, dim, seed_simp_H);
 
         // check if any other vector is included in this cone
+        // --------------------------------------------------
         for (int label=0; label<num_vecs; ++label){
-            // skip if this label corresponds to one explicitly in the simp
+            // next iter if this label corresponds to one explicitly in the simp
             int skip = 0;
             for (int isimp=0; isimp<dim; ++isimp) {
-                if (label == (int)simp_labels[isimp]) {
-                    skip = 1;
-                    break;
-                }
+                if (label == (int)simp_labels[isimp]) skip = 1; break;
             }
             if (skip == 1) continue;
 
@@ -418,7 +416,7 @@ int randfan(
                 bad = bad && (dot>=0);
             }
 
-            // label is geomerically inside :( update _inds and retry
+            // label *is* in conical hull :( update _inds and retry
             if (bad == 1){
                 // increment the indices corresponding to the simplex
                 for (int i=0; i<dim-1; ++i) {
