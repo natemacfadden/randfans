@@ -25,7 +25,7 @@ Does so via pushing-style arguments.
 - `max_num_simps`: Max allowed number of simplices - to prevent writing out of
                    simps container.
 // rng
-- `seed`:          A seed for xoshiro128** RNG. First passed through splitmix64.
+- `seed`:          A seed for xoshiro256++ RNG. First passed through splitmix64.
 // output objects
 - `simps`:         A container for the simplices.
 - `num_simps`:     The number of simplices written.
@@ -177,7 +177,7 @@ void long_jump(uint64_t s[4]) {
 }
 /* End of xoshiro256++ by Blackman and Vigna */
 
-// for seeding xoshiro128**
+// for seeding xoshiro256++
 uint64_t splitmix64(uint64_t *state) {
     uint64_t z = (*state += 0x9e3779b97f4a7c15);
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9;
@@ -208,8 +208,8 @@ void insertion_sort(int *arr, int len) {
     }
 }
 
-// REGFANS CODE
-// ============
+// REGFAN CODE
+// ===========
 // HELPER DATA STRUCTURES
 // ----------------------
 typedef struct {
@@ -370,7 +370,7 @@ int randfan(
     - `max_num_simps`: Max allowed number of simplices - to prevent writing out
                        of simps container.
     // rng
-    - `seed`:          A seed for xoshiro128** RNG. First passed through
+    - `seed`:          A seed for xoshiro256++ RNG. First passed through
                        splitmix64.
     // output objects
     - `simps`:         A container for the simplices.
@@ -383,25 +383,34 @@ int randfan(
         -2: couldn't find initial simplex
         FILL IN
     */
-    // malloc variables (so we can free them all later safely)
+    // set up some variables
+    // ---------------------
+    // misc
+    int return_code = 0;
+    uint64_t s[4]; // RNG state
+
+    // vc variables
+    int labels[num_vecs]; // labels, defined as 0,1,...,num_vecs-1
+    for (int i = 0; i < num_vecs; i++) { labels[i] = i; }
+
+    // simplex variables
+    int _inds[dim]; // indices into the shuffled labels... defines simplex
+    int simp_labels[dim];
+    int seed_simp_R[dim*dim];
+    int seed_simp_H[dim*dim];
+
+    // fan variables
     Simplex *_simps      = NULL;
     int *external_isimp  = NULL;
     int *external_ifacet = NULL; 
 
-    // set up some variables
-    // ---------------------
-    int return_code = 0;
-
-    int labels[num_vecs]; // labels, defined as 0,1,...,num_vecs-1
-    for (int i = 0; i < num_vecs; i++) labels[i] = i;
-
+    // initialize the fan variables
     *num_simps      = 0;
     _simps = malloc(max_num_simps * sizeof(Simplex)); // internal use
     if (_simps == NULL) { return_code = -1; goto end; }
 
     // seed the RNG
     // ------------
-    uint64_t s[4];
     s[0] = splitmix64(&seed);
     s[1] = splitmix64(&seed);
     s[2] = splitmix64(&seed);
@@ -409,14 +418,10 @@ int randfan(
 
     // get an initial simplex
     // ----------------------
-    int seed_simp_R[dim*dim];
-    int seed_simp_H[dim*dim];
-
     // shuffle the labels using Fisher-Yates
     fisher_yates(labels, num_vecs, s);
 
     // begin with seed_simp = labels[0],labels[1],labels[2],...
-    int _inds[dim]; // indices into the shuffled labels... defines simplex
     for (int i=0; i<dim; ++i) _inds[i] = i;
 
     printf("Looking for initial simplex...");
@@ -425,7 +430,6 @@ int randfan(
         begin_seed:;
 
         // get simplex labels
-        int simp_labels[dim];
         for (int i = 0; i < dim; i++) simp_labels[i] = labels[_inds[i]];
         // sort them
         insertion_sort(simp_labels, dim);
