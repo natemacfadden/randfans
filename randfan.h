@@ -499,8 +499,8 @@ int randfan(
     // build other simplices
     // ---------------------
     int external_numfacets;
-    int external_isimp[max_num_simps * dim];
-    int external_ifacet[max_num_simps * dim];
+    int *external_isimp  = malloc(max_num_simps * dim * sizeof(int));
+    int *external_ifacet = malloc(max_num_simps * dim * sizeof(int));
 
     while (num_labels > 0) {
         // re-shuffle the labels
