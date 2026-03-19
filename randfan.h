@@ -460,9 +460,39 @@ int randfan(
         break;
     }
 
-    // build other simplices
-    // ----------------------
+    // discard used labels
+    int num_labels = num_vecs;
+    for (int i=0; i<num_labels; ++i) {
+        // check if we need to throw away the ith label
+        for (int j=0; j<dim; ++j) {
+            if (labels[i] == _simps[0].labels[j]) {
+                // matches a label in simp... throw it away
+                labels[i] = labels[num_labels-1];
+                num_labels--;
+                break;
+            }
+        }
+    }
 
+    // build other simplices
+    // ---------------------
+    while (num_labels > 0) {
+        // re-shuffle the labels
+        fisher_yates(labels, num_labels, s);
+
+        // try pushing each label
+        for (int ilabel=0; ilabel<num_labels; ++ilabel) {
+            // COMPUTE VISIBLE FACETS
+
+            // CHECK IF SIMPLEX cup labels[ilabel] CONTAINS ANYONE ELSE
+
+            // IF YES, TRY NEXT ilabel
+            // IF NO, ADD THESE SIMPLICES
+        }
+    }
+
+    // end goto
+    // --------
     end:
         free(_simps);
         return return_code;
