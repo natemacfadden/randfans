@@ -431,20 +431,31 @@ int randfan(
 
         // no bad vectors!
         // save as formal simplex
-        if (0) {
-        Simplex simp = _simps[*num_simps];
+        Simplex *simp = &_simps[0];
 
         for (int i=0; i<dim; ++i) {
-            simp.labels[i] = simp_labels[i];
+            simp->labels[i] = simp_labels[i];
 
-            simp.external_facet_inds[i] = i; // all facets begin as external
+            simp->external_facet_inds[i] = i; // all facets begin as external
             for (int j=0; j<dim; ++j)
-                simp.normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
+                simp->normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
         }
-        _simps[*num_simps].num_external_facets = dim;
-        }
+        simp->num_external_facets = dim;
 
         printf(":)\n");
+
+        printf("%d\n",*num_simps);
+
+        printf("labels = ");
+        for (int i=0; i<dim; ++i)
+            printf("%d,",_simps[0].labels[i]);
+        printf("\n");
+
+        printf("external_facet_inds = ");
+        for (int i=0; i<dim; ++i)
+            printf("%d,",_simps[0].external_facet_inds[i]);
+        printf("\n");
+
         break;
     }
 
