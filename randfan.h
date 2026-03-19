@@ -409,6 +409,7 @@ int randfan(
     uint64_t s[4]; // RNG state
 
     // vc variables
+    int num_labels = num_vecs;
     int labels[num_vecs]; // labels, defined as 0,1,...,num_vecs-1
     for (int i = 0; i < num_vecs; i++) { labels[i] = i; }
 
@@ -515,7 +516,6 @@ int randfan(
     }
 
     // discard used labels
-    int num_labels = num_vecs;
     for (int i=0; i<num_labels; ++i) {
         // check if we need to throw away the ith label
         for (int j=0; j<dim; ++j) {
@@ -581,7 +581,7 @@ int randfan(
             // --------------------------------------------------
             // (don't update num_simps yet in case any of these are bad)
             for (int k=0; k<visible_numfacets; ++k) {
-                Simplex facet_haver = _simps[visible_isimp[k]];
+                Simplex *facet_haver = &_simps[visible_isimp[k]];
 
                 // store simplex at index (*num_simps + k)
                 // i.e., store k+1 indices after the 'recorded' length
@@ -601,7 +601,7 @@ int randfan(
                         continue; // deleted point
                     }
 
-                    simp->labels[(i-skipped)+1] = facet_haver.labels[i];
+                    simp->labels[(i-skipped)+1] = facet_haver->labels[i];
                 }
 
                 // get the rays/hyperplanes to check for covering other vecs
@@ -625,7 +625,7 @@ int randfan(
 
                 // check if there is a bad containment
                 // -----------------------------------
-                if (simp_contains(simp, vecs, dim, labels, num_vecs)) {
+                if (simp_contains(simp, vecs, dim, labels, num_labels)) {
                     covered_vec = 1;
                     break;
                 }
@@ -640,11 +640,11 @@ int randfan(
             // update external facets...
             // first, remove the visible facets from being external
             for (int k=0; k<visible_numfacets; ++k) {
-                Simplex facet_haver = _simps[visible_isimp[k]];
-                for (int i=0; i<facet_haver.num_external_facets; ++i) {
+                Simplex *facet_haver = &_simps[visible_isimp[k]];
+                for (int i=0; i<facet_haver->num_external_facets; ++i) {
                     if (i==visible_ifacet[k]) {
-                        facet_haver.external_facet_inds[i] = facet_haver.external_facet_inds[facet_haver.num_external_facets-1];
-                        facet_haver.num_external_facets--;
+                        facet_haver->external_facet_inds[i] = facet_haver->external_facet_inds[facet_haver->num_external_facets-1];
+                        facet_haver->num_external_facets--;
                         break;
                     }
                 }
@@ -686,7 +686,7 @@ int randfan(
             }
 
             // update num_simps, labels
-            (*num_simps)++;
+            (*num_simps) += visible_numfacets;
 
             for (int i=0; i<num_labels; ++i) {
                 // check if we need to throw away the ith label
