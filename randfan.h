@@ -33,7 +33,8 @@ Does so via pushing-style arguments.
 **Returns:**
 A status code according to following list:
     0:  success
-    -1: couldn't find seed simplex
+    -1: memory allocation problem
+    -2: couldn't find seed simplex
     FILL IN
 */
 int randfan(
@@ -221,7 +222,7 @@ typedef struct {
 // H-REP OF N-1 SIMPLEX
 // --------------------
 int det(int *M, int dim) {
-    // computes the dimension of M, a dim-by-dim matrix
+    // computes the determinant of M, a dim-by-dim matrix
 
     // base case
     if (dim == 2)
@@ -318,7 +319,7 @@ int simp_contains(Simplex *simp, int *vecs, int dim, int *labels, int num_labels
         // nice check: skip if label is explicitly in simp
         int skip = 0;
         for (int isimp=0; isimp<dim; ++isimp) {
-            if (label == (int)simp->labels[isimp]) {skip = 1; break;}
+            if (label == simp->labels[isimp]) {skip = 1; break;}
         }
         if (skip == 1) continue;
 
@@ -378,7 +379,8 @@ int randfan(
     **Returns:**
     A status code according to following list:
         0:  success
-        -1: couldn't find initial simplex
+        -1: memory allocation problem
+        -2: couldn't find initial simplex
         FILL IN
     */
     // set up some variables
@@ -390,6 +392,7 @@ int randfan(
 
     *num_simps      = 0;
     Simplex *_simps = malloc(max_num_simps * sizeof(Simplex)); // internal use
+    if (_simps == NULL) { return_code = -1; goto end; }
 
     // seed the RNG
     // ------------
@@ -464,7 +467,7 @@ int randfan(
 
             // exhausted all combinations... error
             // (shouldn't ever hit though)
-            if (i < 0) {return_code=-1; goto end;}
+            if (i < 0) { return_code=-2; goto end; }
 
             // update the index i
             _inds[i]++;
@@ -501,6 +504,8 @@ int randfan(
     int external_numfacets;
     int *external_isimp  = malloc(max_num_simps * dim * sizeof(int));
     int *external_ifacet = malloc(max_num_simps * dim * sizeof(int));
+    if (external_isimp == NULL) { return_code = -1; goto end; }
+    if (external_ifacet == NULL) { return_code = -1; goto end; }
 
     while (num_labels > 0) {
         // re-shuffle the labels
@@ -591,6 +596,8 @@ int randfan(
     // --------
     end:
         free(_simps);
+        free(external_isimp);
+        free(external_ifacet);
         return return_code;
 }
 
