@@ -1,7 +1,7 @@
 #ifndef RANDFAN_H
 #define RANDFAN_H
 
-//#define DEBUG
+#define DEBUG
 
 // copying could be reduced significantly in this code...
 
@@ -534,7 +534,8 @@ int randfan(
             int v[dim];
             for (int i=0; i<dim; ++i) v[i] = vecs[dim* label+i];
 
-            // COMPUTE VISIBLE FACETS
+            // compute visible facets
+            // ----------------------
             for (int isimp=0; isimp<*num_simps; ++isimp) {
                 Simplex *simp = &_simps[isimp];
 
@@ -552,13 +553,11 @@ int randfan(
                 }
             }
 
-            return 0;
-
-            // tentatively add visible facets
+            // tentatively add simps associated to visible facets
+            // --------------------------------------------------
             // (don't update num_simps yet in case any of these are bad)
             for (int k=0; k<external_numfacets; ++k) {
                 // grab at index >=numvecs
-                *num_simps+k;
                 Simplex *simp = &_simps[*num_simps+k];
 
                 // collect the labels
@@ -573,7 +572,8 @@ int randfan(
 
                 // set the external facets
                 for (int i=1; i<dim; ++i) {
-                    simp->external_facet_inds[i-0] = i; // all facets begin as external
+                    // all facets begin as external
+                    simp->external_facet_inds[i-0] = i;
                     for (int j=0; j<dim; ++j)
                         simp->normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
                     simp->num_external_facets = dim;
@@ -581,6 +581,7 @@ int randfan(
             }
 
             // DEBUG
+            printf("\n");
             printf("isimp ");
             for (int i=0; i<external_numfacets; ++i) {
                 printf("%d,",external_isimp[i]);
@@ -591,6 +592,8 @@ int randfan(
                 printf("%d,",external_ifacet[i]);
             }
             printf("\n");
+
+            goto end;
             /*
             for simp in simps:
                 for i in range(num_external_facets):
@@ -602,8 +605,6 @@ int randfan(
             // IF YES, TRY NEXT ilabel
             // IF NO, ADD THESE SIMPLICES
         }
-
-        return 0;
     }
 
     // end goto
