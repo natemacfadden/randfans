@@ -210,14 +210,9 @@ void insertion_sort(int *arr, int len) {
 // HELPER DATA STRUCTURES
 // ----------------------
 typedef struct {
-    int removed;         // index of removed vertex
-    int normal[MAX_DIM]; // inward-facing normal
-} Facet;
-
-typedef struct {
-    int labels[MAX_DIM];   // vertices of the simplex
-    Facet facets[MAX_DIM]; // one facet per vertex
-    int *external_facet_inds;
+    int labels[MAX_DIM];              // vertices of the simplex
+    int normals[MAX_DIM*MAX_DIM];     // inwards-facing normals
+    int external_facet_inds[MAX_DIM]; // indices of external facets
     int num_external_facets;
 } Simplex;
 
@@ -280,6 +275,7 @@ void simp_facet_normal(int *R, int dim, int *x) {
 void hrep(int *R, int dim, int *H) {
     // get the inwards-facing H-representation of the simplex
     // (iterate over all facets, get the normal, orient so it faces inwards)
+    // facets come in order R\i for i=0,1,2,...
 
     int R_facet[(dim-1)*dim];
     for (int i=0; i<dim; ++i) {
@@ -433,10 +429,26 @@ int randfan(
             }
         }
 
+        printf(":)\n");
+        printf(":)\n");
+        printf(":)\n");
+        printf(":)\n");
+
         // no bad vectors!
         // save as formal simplex
-        //_simps[*num_simps].labels              = 
+        if (0) {
+        Simplex simp = _simps[*num_simps];
+
+        for (int i=0; i<dim; ++i) {
+            simp.labels[i] = simp_labels[i];
+
+            simp.external_facet_inds[i] = i; // all facets begin as external
+            for (int j=0; j<dim; ++j)
+                simp.normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
+        }
         _simps[*num_simps].num_external_facets = dim;
+        }
+
         printf(":)\n");
         break;
     }
