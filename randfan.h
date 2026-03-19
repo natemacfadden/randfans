@@ -410,7 +410,7 @@ int randfan(
     printf("Looking for initial simplex...");
     while (1) {
         // for retrying next iteration w/ goto
-        begin_loop:
+        begin_seed:
 
         // get simplex labels
         int simp_labels[dim];
@@ -442,6 +442,7 @@ int randfan(
             simp->external_facet_inds[i] = i; // all facets begin as external
             for (int j=0; j<dim; ++j)
                 simp->normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
+            simp->num_external_facets = dim;
         }
 
         // check if any other vector is included in this cone
@@ -453,14 +454,14 @@ int randfan(
             for (int i=0; i<dim-1; ++i) {
                 if (_inds[i]+1 < _inds[i+1]) {
                     _inds[i] += 1;
-                    goto begin_loop; // retry!
+                    goto begin_seed; // retry!
                 }
             }
 
             // no hits for i<dim-1... must set i=dim-1
             for (int i=0; i<dim-1; ++i) _inds[i] = i;
             _inds[dim-1] += 1;
-            goto begin_loop; // retry!
+            goto begin_seed; // retry!
         }
 
         break;
@@ -480,16 +481,97 @@ int randfan(
         }
     }
 
+    // update simp count
+    (*num_simps)++;
+    printf("NUMBER LABELS %d\n",num_labels);
+    printf("NUMBER SIMPLICES %d\n",*num_simps);
+
     // build other simplices
     // ---------------------
-    return 0;
+    int external_numfacets;
+    int external_isimp[MAX_DIM];
+    int external_ifacet[MAX_DIM];
+
     while (num_labels > 0) {
         // re-shuffle the labels
         fisher_yates(labels, num_labels, s);
 
         // try pushing each label
         for (int ilabel=0; ilabel<num_labels; ++ilabel) {
+            external_numfacets = 0;
+            int label = labels[ilabel];
+
+            // get geometric vector
+            int v[4];
+            for (int i=0; i<dim; ++i) v[i] = vecs[dim* label+i];
+
             // COMPUTE VISIBLE FACETS
+            for (int isimp=0; isimp<*num_simps; ++isimp) {
+                Simplex *simp = &_simps[isimp];
+
+                for (int ifacet=0; ifacet<simp->num_external_facets; ++ifacet) {
+                    int dotted = dot(
+                        &simp->normals[MAX_DIM*simp->external_facet_inds[ifacet]],
+                        v,
+                        dim);
+
+                    if (dotted < 0) {
+                        external_isimp[external_numfacets]  = isimp;
+                        external_ifacet[external_numfacets] = ifacet;
+                        external_numfacets++;
+                    }
+                }
+            }
+
+            // tentatively add visible facets
+            // (don't update num_simps yet in case any of these are bad)
+            for (int k=0; k<external_numfacets; ++k) {
+                // grab at index >=numvecs
+                Simplex *simp = &_simps[*num_vecs+k];
+
+                // collect the labels
+                simp->labels[0] = label;
+                int skipped = 0;
+                for (int i=0; i<dim; ++i) {
+                    // ith facet corresponds to deleting ith point
+                    skipped = skipped || (i==external_ifacet[k]);
+                    if (skipped) continue;
+                    simp->labels[i-skipped+1] = _simps[external_isimp[k]]->labels[i];
+                }
+
+                // set the external facets
+                for (int i=1; i<dim; ++i) {
+                    simp->external_facet_inds[i-0] = i; // all facets begin as external
+                    for (int j=0; j<dim; ++j)
+                        simp->normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
+                    simp->num_external_facets = dim;
+                }
+
+                // the point v
+                
+
+                // the facet
+                for (int i=1; i<dim; ++i) {
+                    simp->labels[i] = simp_labels[i];
+
+                    simp->external_facet_inds[i-0] = i; // all facets begin as external
+                    for (int j=0; j<dim; ++j)
+                        simp->normals[MAX_DIM* i+j] = seed_simp_H[dim* i+j];
+                    simp->num_external_facets = dim;
+                }
+            }
+
+            // DEBUG
+            printf("isimp ");
+            for (int i=0; i<external_numfacets; ++i) {
+                printf("%d,",external_isimp[i]);
+            }
+            printf("\n");
+            printf("ifacet ");
+            for (int i=0; i<external_numfacets; ++i) {
+                printf("%d,",external_ifacet[i]);
+            }
+            printf("\n");
             /*
             for simp in simps:
                 for i in range(num_external_facets):
@@ -501,6 +583,8 @@ int randfan(
             // IF YES, TRY NEXT ilabel
             // IF NO, ADD THESE SIMPLICES
         }
+
+        return 0;
     }
 
     // end goto
