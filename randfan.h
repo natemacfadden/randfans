@@ -469,12 +469,17 @@ int randfan(
             fprintf(stderr,"], ");
         #endif
 
-        // get the V and H-representations
+        // get the V-representation
         for (int i=0; i<dim; ++i) {
             for (int j=0; j<dim; ++j) {
                 seed_simp_V[dim* i+j] = vecs[dim* simp_labels[i]+j];
             }
         }
+
+        // check determinant
+        if (det(seed_simp_V, dim) == 0) { goto increment_inds; }
+
+        // get H-representation
         hrep(seed_simp_V, dim, seed_simp_H);
 
         // write as formal simplex
@@ -494,6 +499,7 @@ int randfan(
         // --------------------------------------------------
         int cont_label = simp_contains(simp, vecs, dim, labels, num_vecs);
         if (cont_label != -1) {
+            increment_inds:
             // increment the indices corresponding to the simplex
             // iterate over _inds right-to-left, trying to increment each val
             int i = dim - 1;
