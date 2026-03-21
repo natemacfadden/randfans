@@ -16,7 +16,13 @@ int main(int argc, char **argv) {
     // parse input vectors
     // -------------------
     // in row order. Ideally format "[[p0,p1,...],[q0,q1,..],...]"
-    char* vecs_in = argv[1];
+    char buf[1 << 20];
+    if (argc < 2) {
+        int len = fread(buf, 1, sizeof(buf) - 1, stdin);
+        buf[len] = '\0';
+    }
+    char* vecs_in = (argc > 1) ? argv[1] : buf;
+
     int* vecs     = malloc(strlen(vecs_in) * sizeof(int)); // over-allocates
 
     int num_input =  0;
