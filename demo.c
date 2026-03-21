@@ -16,13 +16,29 @@ int main(int argc, char **argv) {
     // parse input vectors
     // -------------------
     // in row order. Ideally format "[[p0,p1,...],[q0,q1,..],...]"
-    char buf[1 << 20];
-    if (argc < 2) {
+    int num_triangs = 1;
+    char* vecs_in = NULL;
+
+    // check for number of triangulations flag
+    // also read the vectors as characters either from stdin or from a string argument
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "--num") == 0) || (strcmp(argv[i], "-n") == 0)) {
+            num_triangs = atoi(argv[++i]);
+        } else {
+            // user passed in points/vectors as a string
+            vecs_in = argv[i];
+        }
+    }
+
+    // (stdin)
+    if (!vecs_in) {
+        char buf[1 << 20];
         int len = fread(buf, 1, sizeof(buf) - 1, stdin);
         buf[len] = '\0';
+        vecs_in = buf;
     }
-    char* vecs_in = (argc > 1) ? argv[1] : buf;
 
+    // read the vectors as integers
     int* vecs     = malloc(strlen(vecs_in) * sizeof(int)); // over-allocates
 
     int num_input =  0;
@@ -60,25 +76,12 @@ int main(int argc, char **argv) {
     int max_num_simps = 100000;
     uint32_t* simps   = malloc(max_num_simps * sizeof(uint32_t));
     int num_simps;
+    uint64_t seed = 1102; // default seed
 
-
-    int num_seeds = MAX(1, argc-2);
-    uint64_t seeds[num_seeds];
-    if (argc==2) {
-        uint64_t seeds[1];
-        seeds[0] = 1102;
-    } else {
-        for (int i=0; i<argc-2; ++i) {
-            seeds[i] = atoi(argv[2+i]);
-        }
-    }
-
-    for (int iseed=0; iseed<num_seeds; ++iseed) {
-        uint64_t seed = seeds[iseed];
-
+    for (int itriang=0; itriang<num_triangs; ++itriang) {
         int retval = rfp(
             vecs, dim, num_vecs,
-            max_num_simps, seed,
+            max_num_simps, &seed,
             simps, &num_simps);
 
         for (int i=0; i<num_simps; ++i) {

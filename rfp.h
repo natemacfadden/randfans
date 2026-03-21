@@ -44,7 +44,7 @@ int rfp(
     int dim,
     int num_vecs,
     int max_num_simps,
-    uint64_t seed,
+    uint64_t *seed,
     uint32_t *simps,
     int *num_simps
 );
@@ -390,7 +390,7 @@ int rfp(
     int dim,
     int num_vecs,
     int max_num_simps,
-    uint64_t seed,
+    uint64_t *seed,
     uint32_t *simps,
     int *num_simps)
 {
@@ -485,10 +485,10 @@ int rfp(
 
     // seed the RNG
     // ------------
-    s[0] = splitmix64(&seed);
-    s[1] = splitmix64(&seed);
-    s[2] = splitmix64(&seed);
-    s[3] = splitmix64(&seed);
+    s[0] = splitmix64(seed);
+    s[1] = splitmix64(seed);
+    s[2] = splitmix64(seed);
+    s[3] = splitmix64(seed);
 
     // get an initial simplex
     // ----------------------
@@ -834,7 +834,9 @@ int rfp(
         }
     }
 
+    // save the simplices in the output object
     for (int i=0; i<*num_simps; ++i) {
+        insertion_sort(_simps[i].labels, dim);
         for (int j=0; j<dim; ++j) {
             simps[dim* i+j] = _simps[i].labels[j];
         }
@@ -843,6 +845,8 @@ int rfp(
     // end goto
     // --------
     end:
+        *seed = next(s); // update the seed (in case multiple calls are made)
+
         free(_simps);
         free(visible_isimp);
         free(visible_ifacet);
