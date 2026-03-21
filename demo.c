@@ -1,5 +1,5 @@
-#define RANDFAN_IMPLEMENTATION
-#include "randfan.h"
+#define RFP_IMPLEMENTATION
+#include "rfp.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -10,7 +10,7 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-// this is a demo of randfan.h
+// this is a demo of rfp.h
 
 int main(int argc, char **argv) {
     // parse input vectors
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
 
     // get random fine, regular triangulation
     // --------------------------------------
-    // (just call randfan)
+    // (just call rfp)
     int max_num_simps = 100000;
     uint32_t* simps   = malloc(max_num_simps * sizeof(uint32_t));
     int num_simps;
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
     for (int iseed=0; iseed<num_seeds; ++iseed) {
         uint64_t seed = seeds[iseed];
 
-        int retval = randfan(
+        int retval = rfp(
             vecs, dim, num_vecs,
             max_num_simps, seed,
             simps, &num_simps);
