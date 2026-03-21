@@ -35,7 +35,8 @@ Does so via pushing-style arguments.
 A status code according to following list:
     0:  success
     -1: memory allocation problem
-    -2: couldn't find seed simplex
+    -2: 0 vector input
+    -3: couldn't find initial simplex
     FILL IN
 */
 int rfp(
@@ -417,7 +418,8 @@ int rfp(
     A status code according to following list:
         0:  success
         -1: memory allocation problem
-        -2: couldn't find initial simplex
+        -2: 0 vector input
+        -3: couldn't find initial simplex
         FILL IN
     */
     // set up some variables
@@ -448,6 +450,38 @@ int rfp(
     *num_simps      = 0;
     _simps = malloc(max_num_simps * sizeof(Simplex)); // internal use
     if (_simps == NULL) { return_code = -1; goto end; }
+
+    // input checks
+    // ------------
+    // (reject inputs if vector of all 0s)
+    #ifdef VERBOSE
+    printf("Input vectors:");
+    #endif
+    for (int ivec=0; ivec<num_vecs; ++ivec) {
+        #ifdef VERBOSE
+        printf("[");
+        #endif
+
+        int _vi;
+        int bad = 1;
+        for (int j=0; j<dim; ++j) {
+            _vi = vecs[dim* ivec+j];
+            bad = bad && (_vi==0);
+
+            #ifdef VERBOSE
+            printf("%d,",_vi);
+            #endif
+        }
+        #ifdef VERBOSE
+        printf("]\n");
+        #endif
+
+        if (bad) {
+            printf("Rejected since the 0-vector was input...\n");
+            return_code = -2;
+            goto end;
+        }
+    }
 
     // seed the RNG
     // ------------
@@ -506,7 +540,7 @@ int rfp(
 
             // exhausted all combinations... error
             // (shouldn't ever hit though)
-            if (i < 0) { return_code=-2; goto end; }
+            if (i < 0) { return_code=-3; goto end; }
 
             // update the index i
             _inds[i]++;
@@ -571,7 +605,7 @@ int rfp(
             }
             // this line should never be hit
             printf("This line should never be hit...\n");
-            goto increment_inds;
+            goto end;
         }
 
         break;
