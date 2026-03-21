@@ -1,4 +1,4 @@
-Constructs (or attempt to) a random, fine, regular, pushing triangulation of a point/vector configuration in a greedy manner.
+Constructs (or attempt to) a random, fine, pushing triangulation of a point/vector configuration in a greedy manner.
 
 Definitions (see [DRS](https://doi.org/10.1007/978-3-642-12971-1)):
 - a *vector configuration* (VC) is a collection of labeled vectors. Its support is a a convex cone
@@ -6,6 +6,7 @@ Definitions (see [DRS](https://doi.org/10.1007/978-3-642-12971-1)):
 - a *fine* triangulation 'uses' all vectors in the VC. I.e., each vector is a generator of a simplicial cone
 - a *regular* triangulation can be constructed via a lifting procedure (embed the vectors in 1-higher dimension, assign heights to them, treat the lower facets as the triangulation)
 - a *pushing* triangulation, for some order of the vectors, assigns heights $h_i = c^i$ for sufficiently large $c>0$. This also has a combinatorial characterization.
+Pushing triangulations are interesting because they are always regular.
 
 This is inspired by [TOPCOM](https://www.wm.uni-bayreuth.de/de/team/rambau_joerg/TOPCOM/)'s fine triangulation method.
 
