@@ -19,7 +19,7 @@ No duplication checking is performed...
 Compile a demo with
 `clang -g -o rfp src/demo.c `
 
-Run this with
-`./ncube 5 | ./rfp -n 1000`
+Run this with (assuming you have also compile `ncube`... if not, go to the data directory and run `clang -g -o ncube ncube.c `)
+`./data/ncube 5 | ./rfp -n 1000`
 or even
 `python live_triplot.py --n 1000`
