@@ -15,13 +15,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def parse_args():
-    data = "data/491_big2face.dat"
+    data = None
     n    = 100
     rfp  = "./rfp"
     args = sys.argv[1:]
-    if not args:
-        print(__doc__.strip())
-        sys.exit(0)
     while args:
         if args[0] == "--data" and len(args) > 1:
             data = args[1]; args = args[2:]
@@ -31,6 +28,11 @@ def parse_args():
             rfp = args[1]; args = args[2:]
         else:
             sys.exit(f"Unknown argument: {args[0]}\n{__doc__.strip()}")
+
+    if data is None:
+        print("must pass path to data...")
+        sys.exit(0)
+
     return data, n, rfp
 
 data_file, n_seeds, rfp_bin = parse_args()
