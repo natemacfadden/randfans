@@ -30,8 +30,7 @@ def parse_args():
             sys.exit(f"Unknown argument: {args[0]}\n{__doc__.strip()}")
 
     if data is None:
-        print("must pass path to data...")
-        sys.exit(0)
+        sys.exit(f"--data is required\n{__doc__.strip()}")
 
     return data, n, fct
 
@@ -46,15 +45,28 @@ for m in re.finditer(r'\[(-?\d+(?:,\s*-?\d+)*)\]', raw):
     coords = [int(x) for x in m.group(1).split(',')]
     all_pts.append(coords[1:])  # drop first coordinate
 pts = np.array(all_pts, dtype=float)
+if pts.ndim != 2 or pts.shape[1] < 2:
+    sys.exit(f"Expected 2D points, got shape {pts.shape}")
 
 plt.ion()
 fig, ax = plt.subplots()
 
 for seed in range(n_seeds):
-    result = subprocess.run(
-        [fct_bin, '--seed', str(seed), raw],
-        capture_output=True, text=True
-    )
+    try:
+        result = subprocess.run(
+            [fct_bin, '--seed', str(seed), raw],
+            capture_output=True, text=True, timeout=30
+        )
+    except FileNotFoundError:
+        sys.exit(f"Binary not found: {fct_bin}")
+    except subprocess.TimeoutExpired:
+        print(f"seed={seed}: timed out, skipping")
+        continue
+
+    if result.returncode != 0:
+        print(f"seed={seed}: non-zero return code {result.returncode}, skipping")
+        continue
+
     line = result.stdout.strip()
     if not line:
         continue
