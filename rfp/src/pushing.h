@@ -644,7 +644,6 @@ int pushing(
 
         // if we care about fineness, must repeat until we get num_contained=0
         if (opts->fine && (num_contained != 0)) {
-            printf("wtf1???\n");
             // darn... another vector is in cone... subdivide until we're good
             int cont_label = contained_labels[0];
             int cont_ind;
@@ -852,7 +851,6 @@ int pushing(
             }
             // try next label if one of the simplices covered another vec
             if (opts->fine && num_contained) {
-                printf("wtf2???\n");
                 continue;
             }
 
