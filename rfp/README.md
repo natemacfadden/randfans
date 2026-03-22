@@ -1,4 +1,4 @@
-Constructs (or attempt to) a random, fine, pushing triangulation of a point/vector configuration in a greedy manner. This is inspired by [TOPCOM](https://www.wm.uni-bayreuth.de/de/team/rambau_joerg/TOPCOM/)'s fine triangulation method.
+Constructs (or attempt to) random, fine, pushing triangulations of a point/vector configuration in a greedy manner. This gives the name `rfp`. This is inspired by [TOPCOM](https://www.wm.uni-bayreuth.de/de/team/rambau_joerg/TOPCOM/)'s fine triangulation method.
 
 Definitions (see [DRS](https://doi.org/10.1007/978-3-642-12971-1)):
 - a *vector configuration* (VC) is a collection of labeled vectors. Its support is a a convex cone
@@ -14,8 +14,10 @@ As with TOPCOM, this also applies to point configurations (PCs/polytopes) if you
 
 The greedy method seems to always generate a fine triangulation for a PC (i.e., an acyclic VC). For general VCs, sometimes the greedy algorithm gets stuck in a situation where it cannot add more vectors due to the previously added vectors.
 
-Compile this with
-`clang -g -o ncube ncube.c&& clang -g -o rfp demo.c `
+No duplication checking is performed...
+
+Compile a demo with
+`clang -g -o rfp src/demo.c `
 
 Run this with
 `./ncube 5 | ./rfp -n 1000`
