@@ -267,37 +267,19 @@ def _fill_sph_triangle(
     rows, cols = scr.getmaxyx()
     cx, cy = cols // 2, rows // 2
 
-    # Bounding box: sample the three boundary arcs.
-    r_vals: list[int] = []
-    c_vals: list[int] = []
-    for a, b in ((u, v), (v, w), (w, u)):
-        cos_ab = float(np.clip(np.dot(a, b), -1.0, 1.0))
-        theta  = float(np.arccos(cos_ab))
-        n_s    = max(2, int(theta / 0.05))
-        sin_t  = float(np.sin(theta))
-        for i in range(n_s + 1):
-            t  = i / n_s
-            pt = (
-                (np.sin((1.0 - t) * theta) / sin_t) * a
-                + (np.sin(t * theta)        / sin_t) * b
-            ) if sin_t > 1e-9 else a
-            vp = pt - float(np.dot(pt, p)) * p
-            r_vals.append(cy - int(round(float(np.dot(vp, e1)) * scale)))
-            c_vals.append(cx + int(round(float(np.dot(vp, e2)) * scale * 2)))
-
-    rmin = max(0,        min(r_vals))
-    rmax = min(rows - 2, max(r_vals))
-    cmin = max(0,        min(c_vals))
-    cmax = min(cols - 2, max(c_vals))
-    if rmin > rmax or cmin > cmax:
-        return
-
     # Edge normals for spherical point-in-triangle test.
     nAB = np.cross(u, v)
     nBC = np.cross(v, w)
     nCA = np.cross(w, u)
     if float(np.dot(nAB, u + v + w)) < 0.0:
         nAB = -nAB; nBC = -nBC; nCA = -nCA
+
+    # Use the full visible disk as the bounding box.  Arc-sample bounding
+    # boxes fail for large triangles (especially those with back-hemisphere
+    # vertices) because the arc projections don't bound the front-hemisphere
+    # fill region.  The on_sphere + inside tests below handle all clipping.
+    rmin, rmax = 0, rows - 2
+    cmin, cmax = 0, cols - 2
 
     # Project each edge normal onto the tangent-plane basis + p once.
     # dot(n, direction) = n_e2*tx + n_e1*ty + n_p*sqrt(1-mag2)
@@ -500,6 +482,7 @@ class Renderer:
         flip_status:  dict  | None = None,
         is_irregular: bool  = False,
         sphere_mode:  bool  = False,
+        agent_active: bool  = False,
     ) -> None:
         """
         **Description:**
@@ -882,10 +865,9 @@ class Renderer:
                 "                                    ",
             ]
             _ireg_attr = curses.color_pair(_IREG_BG_PAIR) | curses.A_BOLD
-            _ir0 = rows // 2 - len(_ireg_lines) // 2
             for _ii, _il in enumerate(_ireg_lines):
-                _ir = _ir0 + _ii
-                _ic = max(0, cols // 2 - len(_il) // 2)
+                _ir = _ii
+                _ic = 0
                 if 0 <= _ir < rows - 1:
                     try:
                         scr.addstr(_ir, _ic, _il[: cols - 1 - _ic], _ireg_attr)
@@ -899,17 +881,20 @@ class Renderer:
             f"  facet={facet_str}"
             f"  "
         )
-        lock_str  = "[F]ix:ON" if locked else "[F]ix:off"
-        lock_attr = (curses.color_pair(2) | curses.A_BOLD
-                     if locked else curses.color_pair(4))
-        del_str   = "  [D]el:ON" if allow_deletion else "  [D]el:off"
-        del_attr  = (curses.color_pair(2) | curses.A_BOLD
-                     if allow_deletion else curses.color_pair(4))
+        tail      = "[q]uit"
+        agt_str   = "  [A]gent:ON" if agent_active else "  [A]gent:off"
+        agt_attr  = (curses.color_pair(2) | curses.A_BOLD
+                     if agent_active else curses.color_pair(4))
         sph_str   = "  [S]ph:ON" if sphere_mode else "  [S]ph:off"
         sph_attr  = (curses.color_pair(2) | curses.A_BOLD
                      if sphere_mode else curses.color_pair(4))
+        del_str   = "  [D]el:ON" if allow_deletion else "  [D]el:off"
+        del_attr  = (curses.color_pair(2) | curses.A_BOLD
+                     if allow_deletion else curses.color_pair(4))
+        lock_str  = "  [F]ix:ON" if locked else "  [F]ix:off"
+        lock_attr = (curses.color_pair(2) | curses.A_BOLD
+                     if locked else curses.color_pair(4))
         col_str   = f"  [C]:{_COLOR_LABELS[color_mode]}"
-        tail      = "  [q]uit"
         col = 0
         try:
             scr.addstr(rows - 1, col,
@@ -917,21 +902,24 @@ class Renderer:
             col += len(hud_base)
             if col < cols - 1:
                 scr.addstr(rows - 1, col,
-                           lock_str[: cols - 1 - col], lock_attr)
-                col += len(lock_str)
+                           tail[: cols - 1 - col], curses.color_pair(4))
+                col += len(tail)
             if col < cols - 1:
-                scr.addstr(rows - 1, col, del_str[: cols - 1 - col], del_attr)
-                col += len(del_str)
+                scr.addstr(rows - 1, col, agt_str[: cols - 1 - col], agt_attr)
+                col += len(agt_str)
             if col < cols - 1:
                 scr.addstr(rows - 1, col, sph_str[: cols - 1 - col], sph_attr)
                 col += len(sph_str)
             if col < cols - 1:
-                scr.addstr(rows - 1, col,
-                           col_str[: cols - 1 - col], curses.color_pair(4))
-                col += len(col_str)
+                scr.addstr(rows - 1, col, del_str[: cols - 1 - col], del_attr)
+                col += len(del_str)
             if col < cols - 1:
                 scr.addstr(rows - 1, col,
-                           tail[: cols - 1 - col], curses.color_pair(4))
+                           lock_str[: cols - 1 - col], lock_attr)
+                col += len(lock_str)
+            if col < cols - 1:
+                scr.addstr(rows - 1, col,
+                           col_str[: cols - 1 - col], curses.color_pair(4))
         except curses.error:
             pass
 
@@ -986,23 +974,49 @@ def run_display_demo(
     _TARGET_NORM    = 1.9
     _max_norm       = float(np.linalg.norm(fan.vectors(), axis=1).max()) or 1.0
     _view_scale     = _TARGET_NORM / _max_norm
-    _allow_deletion = allow_deletion   # capture before _main shadows the name
+    _allow_deletion  = allow_deletion   # capture before _main shadows the name
+    _pending_prints: list[str] = []    # snapshots queued by 'p', printed after curses exits
+
+    def _snapshot(f: object) -> str:
+        """Return a human-readable summary of vectors and simplices."""
+        cones  = list(f.cones())      # list of label tuples
+        # Collect all labels to enumerate vectors in label order.
+        all_labels = sorted({l for cone in cones for l in cone})
+        def _fmt_vec(v: np.ndarray) -> str:
+            return "[" + ", ".join(str(int(x)) for x in v) + "]"
+
+        vecs_str  = "[" + ", ".join(
+            _fmt_vec(f.vectors(which=(l,))[0]) for l in all_labels
+        ) + "]"
+        labels_str = "[" + ", ".join(str(l) for l in all_labels) + "]"
+        simplices_str = "[" + ", ".join(
+            "[" + ", ".join(str(l) for l in cone) + "]"
+            for cone in sorted(cones)
+        ) + "]"
+        return (
+            f"vectors   = {vecs_str}\n"
+            f"labels    = {labels_str}\n"
+            f"simplices = {simplices_str}"
+        )
 
     def _main(stdscr: _CursesWindow) -> None:
         curses.curs_set(0)
         stdscr.keypad(True)
-        curses.mousemask(0)   # disable mouse/scroll wheel events
+        curses.mousemask(0)
+        stdscr.timeout(50)   # non-blocking so agent and manual modes can share the loop
         if agent is None:
-            stdscr.nodelay(False)
             player = Player([1.0, 0.2, 0.1], [0.0, 1.0, 0.0])
+            from agents.random_agent import RandomAgent as _RA
+            _agent_obj = _RA(player)
         else:
-            stdscr.timeout(50)
-            player = agent.player
+            player     = agent.player
+            _agent_obj = agent
         renderer       = Renderer(fan, stdscr)
         allow_deletion = _allow_deletion
         locked         = False
         sphere_mode    = False
         color_mode     = 0
+        agent_active   = agent is not None
         _speed         = LAT_ACCEL / TURN  # start at the critical speed
 
         nonlocal_fan  = [fan]
@@ -1031,7 +1045,7 @@ def run_display_demo(
         def _agent_step() -> None:
             f        = nonlocal_fan[0]
             old_cone = player.current_cone(f)
-            agent.advance(f)
+            _agent_obj.advance(f)
             if locked:
                 return
             new_cone = player.current_cone(f)
@@ -1056,7 +1070,7 @@ def run_display_demo(
         _agent_acc  = 0.0   # fractional accumulator
 
         while True:
-            if agent is not None:
+            if agent_active:
                 _agent_acc += _agent_rate
                 while _agent_acc >= 1.0:
                     _agent_step()
@@ -1081,21 +1095,25 @@ def run_display_demo(
             renderer.draw(player.position, player.heading, cone,
                           facet, locked, allow_deletion, color_mode,
                           _view_scale, _flip_status, _irregularity[0],
-                          sphere_mode)
+                          sphere_mode, agent_active)
             stdscr.refresh()
             key = stdscr.getch()
             if   key == ord("q"):  break
-            elif key == ord("f"):  locked = not locked
-            elif key == ord("d"):  allow_deletion = not allow_deletion
+            elif key == ord("p"):  _pending_prints.append(_snapshot(nonlocal_fan[0]))
+            elif key == ord("a"):  agent_active = not agent_active
             elif key == ord("s"):  sphere_mode = not sphere_mode
+            elif key == ord("d"):  allow_deletion = not allow_deletion
+            elif key == ord("f"):  locked = not locked
             elif key == ord("c"):  color_mode = (color_mode + 1) % len(_COLOR_LABELS)
-            elif agent is None:
+            elif not agent_active:
                 if key == curses.KEY_UP:
                     _try_move(_speed)
                     _speed = min(MAX_SPEED, _speed + ACCEL)
+                    curses.flushinp()   # drop burst of scroll events
                 elif key == curses.KEY_DOWN:
                     _try_move(-_speed)
                     _speed = min(MAX_SPEED, _speed + ACCEL)
+                    curses.flushinp()
                 elif key == curses.KEY_LEFT:
                     player.turn(-TURN)
                     # Brake if requested curvature exceeds centripetal limit.
@@ -1105,18 +1123,24 @@ def run_display_demo(
                     player.turn(TURN)
                     if TURN * _speed > LAT_ACCEL:
                         _speed = max(MIN_SPEED, _speed * DECEL)
-            elif agent is not None:
+            elif agent_active:
                 _RATE_FACTOR = 1.5
                 _RATE_MIN    = 0.05   # 1 step per 20 frames
                 _RATE_MAX    = 8.0    # 8 steps per frame
                 _NUDGE       = 0.20
                 if   key == curses.KEY_UP:
                     _agent_rate = min(_RATE_MAX, _agent_rate * _RATE_FACTOR)
+                    curses.flushinp()
                 elif key == curses.KEY_DOWN:
                     _agent_rate = max(_RATE_MIN, _agent_rate / _RATE_FACTOR)
+                    curses.flushinp()
                 elif key == curses.KEY_LEFT:
-                    agent.player.turn(-_NUDGE)
+                    _agent_obj.player.turn(-_NUDGE)
                 elif key == curses.KEY_RIGHT:
-                    agent.player.turn(_NUDGE)
+                    _agent_obj.player.turn(_NUDGE)
 
     curses.wrapper(_main)
+    for i, s in enumerate(_pending_prints):
+        if len(_pending_prints) > 1:
+            print(f"\n--- snapshot {i + 1} of {len(_pending_prints)} ---")
+        print(s)
