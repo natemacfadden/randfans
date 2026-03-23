@@ -186,41 +186,69 @@ def _fill_triangle(
                 pass
 
 
-def _fill_triangle_radius(
+_COLOR_LABELS = ("none", "radius", "pos", "fwd")
+
+
+def _fill_triangle_colored(
     scr: _CursesWindow,
     pts: list[tuple[int, int]],
     v3d: list[np.ndarray],
-    r_min: float,
-    r_max: float,
+    color_fn: object,
     n_pairs: int,
     pair_start: int,
 ) -> None:
+    """
+    **Description:**
+    Fill a triangle, mapping each pixel's true interpolated 3D position
+    through `color_fn` to a Viridis palette index.  The 3D vector at each
+    pixel is computed by bilinear interpolation of the corner vectors so
+    that, e.g., the radius coloring reflects the actual norm of the
+    interpolated point—not a linear blend of corner norms.
+
+    **Arguments:**
+    - `scr`: Curses window.
+    - `pts`: Three `(row, col)` screen points.
+    - `v3d`: Three 3D float vectors corresponding to `pts`.
+    - `color_fn`: `(np.ndarray) -> float` mapping an interpolated 3D
+      vector to a value in [0, 1].
+    - `n_pairs`: Number of colour pairs available.
+    - `pair_start`: First colour-pair index.
+
+    **Returns:**
+    Nothing.
+    """
     rows, cols = scr.getmaxyx()
     order = sorted(range(3), key=lambda i: pts[i][0])
     (r0, c0), (r1, c1), (r2, c2) = [pts[o] for o in order]
-    rn0, rn1, rn2 = [float(np.linalg.norm(v3d[o])) for o in order]
+    vv0 = np.asarray(v3d[order[0]], dtype=float)
+    vv1 = np.asarray(v3d[order[1]], dtype=float)
+    vv2 = np.asarray(v3d[order[2]], dtype=float)
 
     if r0 == r2:
         return
 
-    def lerp(a: float, b: float, ra: int, rb: int, r: int) -> float:
+    def _l(a, b, ra: int, rb: int, r: int):  # type: ignore[no-untyped-def]
         return a if ra == rb else a + (b - a) * (r - ra) / (rb - ra)
 
     for r in range(max(0, r0), min(rows - 1, r2 + 1)):
         if r <= r1:
-            cl, cr   = lerp(c0, c1, r0, r1, r),  lerp(c0, c2, r0, r2, r)
-            rnl, rnr = lerp(rn0, rn1, r0, r1, r), lerp(rn0, rn2, r0, r2, r)
+            cl = _l(c0,  c1,  r0, r1, r)
+            cr = _l(c0,  c2,  r0, r2, r)
+            vl = _l(vv0, vv1, r0, r1, r)
+            vr = _l(vv0, vv2, r0, r2, r)
         else:
-            cl, cr   = lerp(c1, c2, r1, r2, r),  lerp(c0, c2, r0, r2, r)
-            rnl, rnr = lerp(rn1, rn2, r1, r2, r), lerp(rn0, rn2, r0, r2, r)
+            cl = _l(c1,  c2,  r1, r2, r)
+            cr = _l(c0,  c2,  r0, r2, r)
+            vl = _l(vv1, vv2, r1, r2, r)
+            vr = _l(vv0, vv2, r0, r2, r)
         if cl > cr:
-            cl, cr, rnl, rnr = cr, cl, rnr, rnl
+            cl, cr, vl, vr = cr, cl, vr, vl
         left, right = int(round(cl)), int(round(cr))
         for c in range(max(0, left), min(cols - 1, right + 1)):
-            tc     = (c - left) / (right - left) if right > left else 0.0
-            radius = rnl + tc * (rnr - rnl)
-            t      = max(0.0, min(1.0, (radius - r_min) / (r_max - r_min)))
-            pair   = pair_start + round(t * (n_pairs - 1))
+            tc       = (c - left) / (right - left) if right > left else 0.0
+            v_interp = vl + tc * (vr - vl)
+            t        = max(0.0, min(1.0, color_fn(v_interp)))  # type: ignore
+            pair     = pair_start + round(t * (n_pairs - 1))
             try:
                 attr = curses.color_pair(pair) | curses.A_BOLD
                 scr.addstr(r, c, "\u2592", attr)
@@ -287,6 +315,7 @@ class Renderer:
         pointed_facet: tuple[int, int] | None = None,
         locked: bool = False,
         allow_deletion: bool = True,
+        color_mode: int = 2,
     ) -> None:
         """
         **Description:**
@@ -302,6 +331,7 @@ class Renderer:
           aiming at, or `None`.
         - `locked`: Whether movement is locked.
         - `allow_deletion`: Whether deletion mode is active.
+        - `color_mode`: Fill mode — 0 none, 1 radius, 2 pos, 3 fwd.
 
         **Returns:**
         Nothing.
@@ -368,11 +398,45 @@ class Renderer:
             _draw_line(scr, r0,     c0, r1,     c1, ch, attr)
             _draw_line(scr, r0 + 1, c0, r1 + 1, c1, ch, attr)
 
-        all_norms = np.linalg.norm(fan.vectors(), axis=1)
-        r_min = float(all_norms.min())
-        r_max = float(all_norms.max())
-        if r_max <= r_min:
-            r_max = r_min + 1.0
+        if color_mode == 1:
+            _r_max = float(
+                np.linalg.norm(fan.vectors(), axis=1).max()
+            ) or 1.0
+
+            def _color_fn(v: np.ndarray) -> float:
+                return float(np.linalg.norm(v)) / _r_max
+
+        elif color_mode == 2:
+            def _color_fn(v: np.ndarray) -> float:  # type: ignore[misc]
+                n = float(np.linalg.norm(v))
+                if n < 1e-12:
+                    return 0.0
+                return max(0.0, float(np.dot(v / n, p)))
+
+        elif color_mode == 3:
+            # Per-pixel flashlight: cone around heading in R³.
+            # Each pixel's interpolated 3D position is checked against the
+            # heading cone (forward/lateral) and dotted with p for steepness
+            # (flat faces bright; edge-on/cliff faces dim).
+            def _color_fn(v: np.ndarray) -> float:  # type: ignore[misc]
+                fwd = float(np.dot(v, e1_new))
+                lat = float(np.dot(v, e2_new))
+                if fwd <= 0.0:
+                    return 0.0
+                ld = float(np.degrees(np.arctan2(abs(lat), fwd)))
+                if ld >= 70.0:
+                    return 0.0
+                cone_t = 1.0 if ld <= 30.0 else (
+                    1.0 - ((ld - 30.0) / 40.0) ** 2
+                )
+                n = float(np.linalg.norm(v))
+                if n < 1e-12:
+                    return 0.0
+                flat_t = max(0.0, float(np.dot(v / n, p)))
+                return cone_t * flat_t
+
+        else:
+            _color_fn = None  # type: ignore[assignment]
 
         sorted_front = sorted(
             front_cones,
@@ -386,12 +450,13 @@ class Renderer:
             pts = [screen_pt(l) for l in clabels]
             if any(pt is None for pt in pts):
                 continue
-            _fill_triangle_radius(  # type: ignore[arg-type]
-                scr, pts,
-                [ray(l) for l in clabels],
-                r_min, r_max,
-                self._n_radius, _RADIUS_PAIR_START,
-            )
+            if _color_fn is not None:
+                _fill_triangle_colored(  # type: ignore[arg-type]
+                    scr, pts,
+                    [ray(l) for l in clabels],
+                    _color_fn,
+                    self._n_radius, _RADIUS_PAIR_START,
+                )
             for i in range(len(clabels)):
                 a, b = clabels[i], clabels[(i + 1) % len(clabels)]
                 edge = (min(a, b), max(a, b))
@@ -434,7 +499,8 @@ class Renderer:
         del_str   = "  [D]el:ON" if allow_deletion else "  [D]el:off"
         del_attr  = (curses.color_pair(2) | curses.A_BOLD
                      if allow_deletion else curses.color_pair(4))
-        tail = "  [q]uit"
+        col_str   = f"  [C]:{_COLOR_LABELS[color_mode]}"
+        tail      = "  [q]uit"
         col = 0
         try:
             scr.addstr(rows - 1, col,
@@ -447,6 +513,10 @@ class Renderer:
             if col < cols - 1:
                 scr.addstr(rows - 1, col, del_str[: cols - 1 - col], del_attr)
                 col += len(del_str)
+            if col < cols - 1:
+                scr.addstr(rows - 1, col,
+                           col_str[: cols - 1 - col], curses.color_pair(4))
+                col += len(col_str)
             if col < cols - 1:
                 scr.addstr(rows - 1, col,
                            tail[: cols - 1 - col], curses.color_pair(4))
@@ -487,6 +557,7 @@ def run_display_demo(
         renderer       = Renderer(fan, stdscr)
         allow_deletion = True
         locked         = False
+        color_mode     = 2
 
         nonlocal_fan = [fan]
 
@@ -539,20 +610,19 @@ def run_display_demo(
             cone    = player.current_cone(f)
             facet   = player.pointed_facet(f)
             renderer.draw(player.position, player.heading, cone,
-                          facet, locked, allow_deletion)
+                          facet, locked, allow_deletion, color_mode)
             stdscr.refresh()
             key = stdscr.getch()
             if   key == ord("q"):  break
             elif key == ord("s"):  locked = not locked
             elif key == ord("d"):  allow_deletion = not allow_deletion
+            elif key == ord("c"):  color_mode = (color_mode + 1) % 4
             elif agent is None:
                 if   key == curses.KEY_UP:    _try_move(STEP)
                 elif key == curses.KEY_DOWN:  _try_move(-STEP)
                 elif key == curses.KEY_LEFT:
                     player.turn(-TURN)
-                    _try_move(STEP)
                 elif key == curses.KEY_RIGHT:
                     player.turn(TURN)
-                    _try_move(STEP)
 
     curses.wrapper(_main)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 
-from src.generate_cube import cube_fan, cube_vc
 from src.display import run_display_demo
 
 
@@ -32,13 +31,25 @@ def _parse_args() -> argparse.Namespace:
         metavar="s",
         help="Agent step size in radians (default: 0.04).",
     )
+    p.add_argument(
+        "--shape",
+        choices=["cube", "trunc_oct"],
+        default="cube",
+        help="Vector configuration shape (default: cube).",
+    )
     return p.parse_args()
 
 
 def main() -> None:
-    args  = _parse_args()
-    fan   = cube_fan(3)
-    vc    = cube_vc(3)
+    args = _parse_args()
+    if args.shape == "trunc_oct":
+        from src.generate_trunc_oct import trunc_oct_fan, trunc_oct_vc
+        fan = trunc_oct_fan()
+        vc  = trunc_oct_vc()
+    else:
+        from src.generate_cube import cube_fan, cube_vc
+        fan = cube_fan(3)
+        vc  = cube_vc(3)
     agent = None
     if args.levy:
         from agents.random_agent import RandomAgent
