@@ -3,8 +3,26 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from src.display import run_display_demo
+
+
+def _fix_negative_args() -> None:
+    """Join --pos/--heading with their value using '=' so argparse doesn't
+    mistake a leading '-' in the value for a flag."""
+    _vec_flags = {"--pos", "--heading"}
+    argv = sys.argv
+    fixed = [argv[0]]
+    i = 1
+    while i < len(argv):
+        if argv[i] in _vec_flags and i + 1 < len(argv):
+            fixed.append(f"{argv[i]}={argv[i + 1]}")
+            i += 2
+        else:
+            fixed.append(argv[i])
+            i += 1
+    sys.argv = fixed
 
 
 def _parse_args() -> argparse.Namespace:
@@ -57,10 +75,37 @@ def _parse_args() -> argparse.Namespace:
         dest="deletion",
         help="Enable deletion mode at startup (default: off).",
     )
+    p.add_argument(
+        "--pos",
+        type=str,
+        default=None,
+        metavar="x,y,z",
+        help="Initial player position as 'x,y,z' (direction, will be normalised).",
+    )
+    p.add_argument(
+        "--heading",
+        type=str,
+        default=None,
+        metavar="x,y,z",
+        help="Initial player heading as 'x,y,z'.",
+    )
+    p.add_argument(
+        "--color",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Initial color mode: 0=none, 1=radius, 2=sun (default: 0).",
+    )
+    p.add_argument(
+        "--flashlight",
+        action="store_true",
+        help="Start with flashlight on.",
+    )
     return p.parse_args()
 
 
 def main() -> None:
+    _fix_negative_args()
     args = _parse_args()
     if args.shape == "trunc_oct":
         from src.generate_trunc_oct import trunc_oct_fan, trunc_oct_vc
@@ -78,13 +123,32 @@ def main() -> None:
         from src.generate_cube import cube_fan, cube_vc
         fan = cube_fan(3)
         vc  = cube_vc(3)
+    import numpy as np
+
+    def _parse_vec(s):
+        return np.array([float(x) for x in s.split(",")], dtype=float)
+
+    initial_pos       = _parse_vec(args.pos)     if args.pos     else None
+    initial_heading   = _parse_vec(args.heading) if args.heading else None
+
     agent = None
     if args.levy:
         from agents.random_agent import RandomAgent
         from src.player import Player
-        player = Player([1.0, 0.2, 0.1], [0.0, 1.0, 0.0])
+        pos0 = initial_pos   if initial_pos   is not None else [1.0, 0.2, 0.1]
+        hdg0 = initial_heading if initial_heading is not None else [0.0, 1.0, 0.0]
+        player = Player(pos0, hdg0)
         agent  = RandomAgent(player, alpha=args.alpha, step=args.step)
-    run_display_demo(fan, vc, agent=agent, allow_deletion=args.deletion)
+
+    run_display_demo(
+        fan, vc,
+        agent=agent,
+        allow_deletion=args.deletion,
+        initial_pos=initial_pos,
+        initial_heading=initial_heading,
+        initial_color=args.color,
+        initial_flashlight=args.flashlight,
+    )
 
 
 if __name__ == "__main__":
