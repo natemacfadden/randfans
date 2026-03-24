@@ -9,7 +9,7 @@ span is not all of R³), the set is discarded and resampled.
 from __future__ import annotations
 
 import numpy as np
-from scipy.spatial import ConvexHull
+from scipy.spatial import ConvexHull, QhullError
 
 _LATTICE_TOL = 1e-6
 
@@ -112,7 +112,8 @@ def random_vectors(
 
     rng = np.random.default_rng(seed)
 
-    while True:
+    _MAX_ATTEMPTS = 10_000
+    for _attempt in range(_MAX_ATTEMPTS):
         seen: set[tuple[int, ...]] = set()
         while len(seen) < n_vectors:
             v  = rng.integers(-max_coord, max_coord + 1, size=3)
@@ -125,9 +126,14 @@ def random_vectors(
 
         try:
             hull = ConvexHull(pts)
-        except Exception:
+        except QhullError:
             continue
 
         # Origin is strictly interior iff all half-space offsets are negative.
         if np.all(hull.equations[:, 3] < 0):
             return _surface_lattice_points(pts, hull)
+
+    raise ValueError(
+        f"random_vectors: origin not strictly interior after {_MAX_ATTEMPTS} attempts "
+        f"(seed={seed}, n_vectors={n_vectors}, max_coord={max_coord})"
+    )
