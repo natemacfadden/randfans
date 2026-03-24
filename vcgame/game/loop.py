@@ -224,6 +224,7 @@ def run_display_demo(
     initial_flashlight: bool = False,
     vectors: list | None = None,
     cli_cmd: str = "",
+    max_frames: int | None = None,
 ) -> None:
     """Launch a curses demo: render the fan with a player; quit on 'q'.
 
@@ -395,6 +396,7 @@ def run_display_demo(
         _agent_rate = 1.0   # steps per frame (can be fractional)
         _agent_acc  = 0.0   # fractional accumulator
         _debug_on   = False  # whether debug overlay is visible
+        _frame_count = 0
 
         try:
             while True:
@@ -445,6 +447,11 @@ def run_display_demo(
                             pass
 
                 stdscr.refresh()
+                _frame_count += 1
+                if max_frames is not None and _frame_count >= max_frames:
+                    stdscr.nodelay(False)
+                    stdscr.getch()
+                    break
 
                 # Drain ALL pending input this frame so terminal key-repeat
                 # buffering cannot cause movement to continue after key release.

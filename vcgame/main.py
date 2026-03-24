@@ -98,6 +98,19 @@ def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         metavar="az,el",
         help="Initial player heading as azimuth,elevation in degrees.",
     )
+    p.add_argument(
+        "--color",
+        type=int,
+        choices=[0, 1, 2],
+        default=0,
+        metavar="N",
+        help="Initial color mode: 0=wireframe, 1=radius, 2=sun (default: 0).",
+    )
+    p.add_argument(
+        "--once",
+        action="store_true",
+        help="Render a single frame then exit (useful for benchmarking).",
+    )
     return p, p.parse_args()
 
 
@@ -137,8 +150,10 @@ def main() -> None:
         agent=None,
         initial_pos=initial_pos,
         initial_heading=initial_heading,
+        initial_color=args.color,
         vectors=vectors,
         cli_cmd=cli_cmd,
+        max_frames=1 if args.once else None,
     )
 
 

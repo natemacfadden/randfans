@@ -1,5 +1,10 @@
 """
 Curses-based ASCII renderer for the fan and player position on S².
+
+Rendering uses a backward (ray-casting) approach: for each screen pixel a
+line is fired from the screen plane inward along -p, and the first cone face
+it hits is shaded.  Edges are drawn on top via Bresenham (flat) or SLERP
+arcs (sphere).
 """
 
 from __future__ import annotations
@@ -8,6 +13,7 @@ import curses
 import math
 from typing import TYPE_CHECKING
 
+import numba
 import numpy as np
 
 from .colors import (
@@ -22,7 +28,7 @@ if TYPE_CHECKING:
     from regfans import Fan
     from _curses import _CursesWindow
 
-_SLERP_STEP   = 0.04   # arc-length step for spherical triangle sampling
+_SLERP_STEP   = 0.04   # arc-length step for spherical arc sampling
 _SUN_DISTANCE = 20.0
 _SUN_REF      = np.array([1.0, 1.0, 1.0])
 
@@ -36,7 +42,7 @@ _SYMBOL_STYLES: tuple = (
 _M3_HEIGHT     = 0.003  # player elevation above current face (flashlight mode)
 _M3_THETA_MAX  = 55.0   # flashlight cone half-angle from heading, degrees
 
-# Point light for "sun" mode (mode 3).
+# Point light for "sun" mode.
 # Placed diagonally so all cube axes shade differently.
 # _SUN_BRIGHTNESS normalises intensity so the closest expected surface
 # (at ~1 unit from origin, ~19 units from the sun) maps to roughly 1.
@@ -45,10 +51,19 @@ _SUN_POS = _SUN_POS / float(np.linalg.norm(_SUN_POS)) * _SUN_DISTANCE
 _SUN_BRIGHTNESS   = float(np.dot(_SUN_POS - _SUN_REF, _SUN_POS - _SUN_REF))
 _SUN_AMBIENT      = 0.12   # base illumination on all surfaces, including shadowed ones
 _SUN_MAX          = 0.72   # cap on sun brightness (prevents over-saturation at peak)
-_DIM_LEVEL        = 0.45   # default brightness when flashlight is off
+_DIM_LEVEL        = 0.45   # default brightness when color fill is off
+_FL_BOOST         = 1.55   # max flashlight brightness increase above _DIM_LEVEL
 
 _HUD_ROWS = 2  # number of rows reserved at screen bottom for HUD
 
+# Distance from player surface position to screen plane, in scene units.
+# Acts as the FOV parameter: larger = narrower field of view.
+_FOV_DIST: float = 1.0
+
+
+# ---------------------------------------------------------------------------
+# Curses helpers
+# ---------------------------------------------------------------------------
 
 def _addstr(scr, r: int, c: int, text: str, attr: int = 0) -> None:
     """Write text to the curses screen, silently ignoring out-of-bounds errors."""
@@ -117,19 +132,7 @@ def _project(
 
 
 def _cone_edge_map(fan: Fan) -> dict[tuple[int, int], set[tuple[int, ...]]]:
-    """Return a mapping from each edge to the set of cones containing it.
-
-    Parameters
-    ----------
-    fan : regfans.Fan
-        The fan to process.
-
-    Returns
-    -------
-    dict[tuple[int, int], set[tuple[int, ...]]]
-        Maps each sorted ray-label pair ``(min_label, max_label)`` to the
-        set of cone label tuples that contain that edge.
-    """
+    """Return a mapping from each edge to the set of cones containing it."""
     edge_map: dict[tuple[int, int], set[tuple[int, ...]]] = {}
     for cone in fan.cones():
         labels = list(cone)
@@ -150,25 +153,7 @@ def _draw_line(
     ch: str,
     attr: int,
 ) -> None:
-    """Draw a line between two screen positions using Bresenham's algorithm.
-
-    Parameters
-    ----------
-    scr : _CursesWindow
-        Curses window.
-    r0 : int
-        Start row.
-    c0 : int
-        Start column.
-    r1 : int
-        End row.
-    c1 : int
-        End column.
-    ch : str
-        Character to draw.
-    attr : int
-        Curses attribute.
-    """
+    """Draw a line between two screen positions using Bresenham's algorithm."""
     rows, cols = scr.getmaxyx()
 
     def put(r: int, c: int) -> None:
@@ -201,104 +186,6 @@ def _draw_line(
     put(r1, c1)
 
 
-def _fill_triangle(
-    scr: _CursesWindow,
-    pts: list[tuple[int, int]],
-    ch: str,
-    attr: int,
-    v3d: list[np.ndarray] | None = None,
-    shade_fn=None,
-    view_dir: np.ndarray | None = None,
-    depth_buf: np.ndarray | None = None,
-) -> None:
-    """Fill a flat-projected triangle.
-
-    If ``v3d`` (three 3-D vertex positions matching ``pts``) and
-    ``shade_fn(pos, normal, depth, r, c) -> (ch, attr) | None`` are both
-    supplied, the position is linearly interpolated across the triangle and
-    the face normal ``normalize(cross(v1−v0, v2−v0))`` is the constant
-    normal. ``depth = dot(pos, view_dir)`` if ``view_dir`` is provided,
-    else 0. Returning ``None`` from ``shade_fn`` skips the pixel.
-
-    If ``depth_buf`` (rows×cols float array, init to ``-inf``) is supplied,
-    each pixel is only drawn when its depth exceeds the stored value.
-
-    Parameters
-    ----------
-    scr : _CursesWindow
-        Curses window.
-    pts : list[tuple[int, int]]
-        Screen coordinates of the three triangle vertices as (row, col).
-    ch : str
-        Fill character used when no shade function is supplied.
-    attr : int
-        Curses attribute used when no shade function is supplied.
-    v3d : list[np.ndarray] or None, optional
-        Three 3-D vertex positions corresponding to ``pts``.
-    shade_fn : callable or None, optional
-        Per-pixel shading function with signature
-        ``(pos, normal, depth, r, c) -> (ch, attr) | None``.
-    view_dir : np.ndarray or None, optional
-        View direction used to compute depth.
-    depth_buf : np.ndarray or None, optional
-        Rows×cols float array (initialised to ``-inf``) for depth testing.
-    """
-    rows, cols = scr.getmaxyx()
-
-    # Sort vertices by screen row.
-    order = sorted(range(3), key=lambda i: pts[i][0])
-    (r0, c0), (r1, c1), (r2, c2) = [pts[o] for o in order]
-    if r0 == r2:
-        return
-
-    # Precompute face normal and sorted 3-D vertices when shading.
-    face_normal: np.ndarray | None = None
-    vv: list[np.ndarray] = []
-    if v3d is not None and shade_fn is not None:
-        vv = [np.asarray(v3d[o], dtype=float) for o in order]
-        _fn = np.cross(vv[1] - vv[0], vv[2] - vv[0])
-        _fn_n = float(np.linalg.norm(_fn))
-        face_normal = (_fn / _fn_n) if _fn_n > 1e-12 else np.zeros(3)
-        # Ensure normal points away from origin (consistent across view changes).
-        _centroid = (vv[0] + vv[1] + vv[2]) / 3.0
-        face_normal = _orient_normal(face_normal, _centroid)
-
-    def _il(a: float, b: float, ra: int, rb: int, r: int) -> float:
-        return a if ra == rb else a + (b - a) * (r - ra) / (rb - ra)
-
-    for r in range(max(0, r0), min(rows - _HUD_ROWS, r2 + 1)):
-        if r <= r1:
-            cl = _il(c0, c1, r0, r1, r);  cr = _il(c0, c2, r0, r2, r)
-            vl = _il(vv[0], vv[1], r0, r1, r) if vv else None
-            vr = _il(vv[0], vv[2], r0, r2, r) if vv else None
-        else:
-            cl = _il(c1, c2, r1, r2, r);  cr = _il(c0, c2, r0, r2, r)
-            vl = _il(vv[1], vv[2], r1, r2, r) if vv else None
-            vr = _il(vv[0], vv[2], r0, r2, r) if vv else None
-        if cl > cr:
-            cl, cr = cr, cl
-            if vl is not None:
-                vl, vr = vr, vl
-        left  = int(round(cl))
-        right = int(round(cr))
-        for c in range(max(0, left), min(cols - 2, right) + 1):
-            if shade_fn is not None and face_normal is not None and vl is not None:
-                tc    = (c - left) / (right - left) if right > left else 0.0
-                pos   = vl + tc * (vr - vl)
-                depth = float(np.dot(pos, view_dir)) if view_dir is not None else 0.0
-                if depth_buf is not None and depth <= depth_buf[r, c]:
-                    continue
-                result = shade_fn(pos, face_normal, depth, r, c)
-                if result is None:
-                    continue
-                if depth_buf is not None:
-                    depth_buf[r, c] = depth
-                c_ch, c_attr = result
-            else:
-                c_ch, c_attr = ch, attr
-            _addstr(scr, r, c, c_ch, c_attr)
-
-
 def _ray_intersects_triangle(
     orig: np.ndarray,
     d: np.ndarray,
@@ -314,17 +201,13 @@ def _ray_intersects_triangle(
         Ray origin.
     d : np.ndarray
         Ray direction (need not be normalised).
-    v0 : np.ndarray
-        First triangle vertex.
-    v1 : np.ndarray
-        Second triangle vertex.
-    v2 : np.ndarray
-        Third triangle vertex.
+    v0, v1, v2 : np.ndarray
+        Triangle vertices.
 
     Returns
     -------
     float or None
-        ``t > 0`` such that ``orig + t*d`` lies on the triangle, or
+        ``t > 1e-6`` such that ``orig + t*d`` lies on the triangle, or
         ``None`` if there is no intersection.
     """
     e1 = v1 - v0
@@ -346,145 +229,453 @@ def _ray_intersects_triangle(
     return t if t > 1e-6 else None
 
 
-def _fill_sph_triangle(
-    scr: _CursesWindow,
-    u: np.ndarray,
-    v: np.ndarray,
-    w: np.ndarray,
+# ---------------------------------------------------------------------------
+# Backward rendering helpers
+# ---------------------------------------------------------------------------
+
+def _compute_p_surface(
     p: np.ndarray,
-    e1: np.ndarray,
-    e2: np.ndarray,
-    scale: float,
-    ch: str,
-    attr: int,
-    shade_fn=None,
-    depth_buf: np.ndarray | None = None,
-) -> None:
-    """Fill the spherical triangle whose sides are great-circle arcs u–v–w.
+    v0: np.ndarray,
+    face_normal: np.ndarray,
+) -> np.ndarray:
+    """Return the point where ray p intersects the face plane.
 
-    Each screen row is processed as a numpy array so the per-pixel
-    back-projection and triangle test are vectorised. A single ``addstr``
-    call per contiguous filled run eliminates per-pixel Python overhead.
-
-    If ``shade_fn(pos, normal, depth, r, c) -> (ch, attr) | None`` is
-    provided it is called for every filled character. ``pos`` and ``normal``
-    are the unit-sphere point (= radial normal) at that pixel; ``depth`` is
-    the Z-component ``dot(pos, p)``; ``r, c`` are screen coordinates.
-    Returning ``None`` skips the pixel. Without ``shade_fn`` the fast
-    run-based path is used.
-
-    If ``depth_buf`` (rows×cols float array, init to ``-inf``) is supplied,
-    each pixel is only drawn when its depth exceeds the stored value, and
-    the buffer is updated on draw.
+    The face plane passes through ``v0`` with outward normal ``face_normal``.
+    Returns ``p`` (unit vector fallback) if the ray is nearly parallel to the
+    plane.
 
     Parameters
     ----------
-    scr : _CursesWindow
-        Curses window.
-    u : np.ndarray
-        First vertex of the spherical triangle (unit vector).
-    v : np.ndarray
-        Second vertex of the spherical triangle (unit vector).
-    w : np.ndarray
-        Third vertex of the spherical triangle (unit vector).
     p : np.ndarray
-        View direction (unit vector); defines the projection centre.
-    e1 : np.ndarray
-        Tangent basis vector pointing "up" on screen.
-    e2 : np.ndarray
-        Tangent basis vector pointing "right" on screen.
-    scale : float
-        Projection scale factor (pixels per unit radius).
-    ch : str
-        Fill character used on the fast (no shade function) path.
-    attr : int
-        Curses attribute used on the fast path.
-    shade_fn : callable or None, optional
-        Per-pixel shading function with signature
-        ``(pos, normal, depth, r, c) -> (ch, attr) | None``.
-    depth_buf : np.ndarray or None, optional
-        Rows×cols float array (initialised to ``-inf``) for depth testing.
+        Unit viewing direction (player position on S²).
+    v0 : np.ndarray
+        Any vertex of the current cone.
+    face_normal : np.ndarray
+        Outward unit normal of the current cone's face plane.
+
+    Returns
+    -------
+    np.ndarray
+        3D point on the face plane: ``λ * p`` where
+        ``λ = dot(v0, face_normal) / dot(p, face_normal)``.
     """
-    rows, cols = scr.getmaxyx()
-    cx, cy = cols // 2, rows // 2
-
-    # Edge normals for spherical point-in-triangle test.
-    nAB = np.cross(u, v)
-    nBC = np.cross(v, w)
-    nCA = np.cross(w, u)
-    if float(np.dot(nAB, u + v + w)) < 0.0:
-        nAB = -nAB; nBC = -nBC; nCA = -nCA
+    denom = float(np.dot(p, face_normal))
+    if abs(denom) < 1e-12:
+        return p.copy()
+    lam = float(np.dot(v0, face_normal)) / denom
+    return lam * p
 
 
-    # Use the full visible disk as the bounding box.  Arc-sample bounding
-    # boxes fail for large triangles (especially those with back-hemisphere
-    # vertices) because the arc projections don't bound the front-hemisphere
-    # fill region.  The on_sphere + inside tests below handle all clipping.
-    rmin, rmax = 0, rows - _HUD_ROWS - 1
-    cmin, cmax = 0, cols - 2
+def _pixel_row_positions(
+    r: int,
+    c_arr: np.ndarray,
+    screen_center: np.ndarray,
+    e1: np.ndarray,
+    e2: np.ndarray,
+    scale: float,
+    cx: int,
+    cy: int,
+) -> np.ndarray:
+    """Return 3D positions for every pixel in screen row ``r``.
 
-    # Project each edge normal onto the tangent-plane basis + p once.
-    # dot(n, direction) = n_e2*tx + n_e1*ty + n_p*sqrt(1-mag2)
-    nAB_e2 = float(np.dot(nAB, e2))
-    nAB_e1 = float(np.dot(nAB, e1))
-    nAB_p  = float(np.dot(nAB, p))
-    nBC_e2 = float(np.dot(nBC, e2))
-    nBC_e1 = float(np.dot(nBC, e1))
-    nBC_p  = float(np.dot(nBC, p))
-    nCA_e2 = float(np.dot(nCA, e2))
-    nCA_e1 = float(np.dot(nCA, e1))
-    nCA_p  = float(np.dot(nCA, p))
+    The screen plane is centred at ``screen_center = p_surface + FOV_DIST*p``.
+    Each pixel at column ``c`` is offset by scene-unit distances along ``e1``
+    (up) and ``e2`` (right).  Columns are scaled by 2× relative to rows to
+    compensate for terminal character cells being ~2× taller than wide,
+    preserving circular aspect ratio.
 
-    sc2 = scale * 2.0
-    c_arr = np.arange(cmin, cmax + 1)
-    TX    = (c_arr - cx) / sc2        # shape (ncols,)
+    Parameters
+    ----------
+    r : int
+        Screen row index.
+    c_arr : np.ndarray
+        1-D array of column indices to evaluate, shape ``(N,)``.
+    screen_center : np.ndarray
+        3D centre of the screen plane, shape ``(3,)``.
+    e1 : np.ndarray
+        Screen "up" basis vector, shape ``(3,)``.
+    e2 : np.ndarray
+        Screen "right" basis vector, shape ``(3,)``.
+    scale : float
+        Pixels per scene unit (vertical).
+    cx, cy : int
+        Screen centre in pixel coordinates.
 
-    for r in range(rmin, rmax + 1):
-        ty   = (cy - r) / scale
-        mag2 = TX * TX + ty * ty
-        on_sphere = mag2 < 1.0
-        if not np.any(on_sphere):
-            continue
-        Z      = np.sqrt(np.maximum(0.0, 1.0 - mag2))  # vectorised sqrt
-        inside = (on_sphere
-                  & (nAB_e2 * TX + nAB_e1 * ty + nAB_p * Z > 0.0)
-                  & (nBC_e2 * TX + nBC_e1 * ty + nBC_p * Z > 0.0)
-                  & (nCA_e2 * TX + nCA_e1 * ty + nCA_p * Z > 0.0))
-        idx = np.where(inside)[0]
-        if idx.size == 0:
-            continue
-        if shade_fn is not None:
-            # Per-character path: compute position/normal for each pixel.
-            for j in idx:
-                tx    = float(TX[j])
-                z     = float(Z[j])
-                c_abs = cmin + int(j)
-                if depth_buf is not None and z <= depth_buf[r, c_abs]:
-                    continue
-                pos    = tx * e2 + ty * e1 + z * p   # unit-sphere point; normal = radial
-                result = shade_fn(pos, pos, z, r, c_abs)
-                if result is None:
-                    continue
-                if depth_buf is not None:
-                    depth_buf[r, c_abs] = z
-                c_ch, c_attr = result
-                _addstr(scr, r, c_abs, c_ch, c_attr)
+    Returns
+    -------
+    np.ndarray
+        Shape ``(N, 3)`` — one 3D position per column.
+    """
+    s     = (cy - r) / scale                   # scene units along e1
+    u_arr = (c_arr - cx) / (scale * 2.0)       # scene units along e2
+    row_center = screen_center + s * e1        # (3,)
+    return row_center[np.newaxis, :] + u_arr[:, np.newaxis] * e2[np.newaxis, :]
+
+
+def _batch_ray_triangle(
+    pixel_row: np.ndarray,
+    d: np.ndarray,
+    v0: np.ndarray,
+    v1: np.ndarray,
+    v2: np.ndarray,
+) -> np.ndarray:
+    """Batched Möller–Trumbore intersection for a row of ray origins.
+
+    All rays share the same direction ``d``.
+
+    Parameters
+    ----------
+    pixel_row : np.ndarray
+        Ray origins, shape ``(N, 3)``.
+    d : np.ndarray
+        Shared ray direction, shape ``(3,)``.
+    v0, v1, v2 : np.ndarray
+        Triangle vertices, shape ``(3,)`` each.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(N,)`` — intersection distance ``t > 1e-6`` for each ray,
+        or ``inf`` if no intersection.
+    """
+    edge1 = v1 - v0
+    edge2 = v2 - v0
+    h     = np.cross(d, edge2)            # (3,)
+    a     = float(np.dot(edge1, h))
+    if abs(a) < 1e-8:
+        return np.full(len(pixel_row), np.inf)
+    f     = 1.0 / a
+    s     = pixel_row - v0                # (N, 3)
+    u     = f * (s @ h)                   # (N,)
+    q     = np.cross(s, edge1)            # (N, 3)
+    vv    = f * (q @ d)                   # (N,)
+    t     = f * (q @ edge2)               # (N,)
+    valid = (u >= 0.0) & (u <= 1.0) & (vv >= 0.0) & (u + vv <= 1.0) & (t > 1e-6)
+    result = np.full(len(pixel_row), np.inf)
+    result[valid] = t[valid]
+    return result
+
+
+def _sphere_row_hits(
+    pixel_row: np.ndarray,
+    p: np.ndarray,
+) -> np.ndarray:
+    """Solve ``|pixel_row[i] - t*p|² = 1`` for each pixel.
+
+    Finds where the line from ``pixel_row[i]`` in direction ``-p`` hits the
+    unit sphere.  Takes the smallest positive root.
+
+    Parameters
+    ----------
+    pixel_row : np.ndarray
+        Screen pixel positions, shape ``(N, 3)``.
+    p : np.ndarray
+        Unit viewing direction (ray direction is ``-p``), shape ``(3,)``.
+
+    Returns
+    -------
+    np.ndarray
+        Shape ``(N,)`` — intersection parameter ``t > 0``, or ``inf`` if the
+        line misses the unit sphere.
+    """
+    # Expanding |pixel - t*p|² = 1 with |p|=1:
+    # t² - 2·dot(pixel,p)·t + (|pixel|²-1) = 0
+    b      = pixel_row @ p                           # (N,)
+    c_coef = np.sum(pixel_row ** 2, axis=1) - 1.0   # (N,)
+    disc   = b * b - c_coef                          # (N,) discriminant
+    result = np.full(len(pixel_row), np.inf)
+    valid  = disc >= 0.0
+    if not np.any(valid):
+        return result
+    sq     = np.sqrt(np.maximum(0.0, disc[valid]))
+    t1     = b[valid] - sq
+    t2     = b[valid] + sq
+    # Take smallest positive root; fall back to larger root if t1 ≤ 0.
+    t_best = np.where(t1 > 1e-6, t1, np.where(t2 > 1e-6, t2, np.inf))
+    result[valid] = t_best
+    return result
+
+
+def _shadow_blocked(
+    hit_pos: np.ndarray,
+    target: np.ndarray,
+    v0s: np.ndarray,
+    v1s: np.ndarray,
+    v2s: np.ndarray,
+    skip_idx: int = -1,
+    eps: float = 1e-3,
+) -> bool:
+    """Return True if the line segment from ``hit_pos`` to ``target`` is
+    blocked by any cone triangle.
+
+    Parameters
+    ----------
+    hit_pos : np.ndarray
+        Start of the shadow ray.
+    target : np.ndarray
+        End point (sun position or flashlight source).
+    v0s, v1s, v2s : np.ndarray
+        Stacked triangle vertices, shape ``(T, 3)`` each.
+    skip_idx : int
+        Row index to skip in the triangle arrays (avoids self-intersection).
+        Pass -1 to skip nothing.
+    eps : float
+        Nudge distance along ray to avoid self-intersection.
+    """
+    if len(v0s) == 0:
+        return False
+    to_target = target - hit_pos
+    dist      = float(np.linalg.norm(to_target))
+    if dist < 1e-12:
+        return False
+    d    = to_target / dist
+    orig = hit_pos + eps * d
+
+    edge1 = v1s - v0s                               # (T, 3)
+    edge2 = v2s - v0s                               # (T, 3)
+    h     = np.cross(d, edge2)                      # (T, 3)
+    a     = np.einsum('ti,ti->t', edge1, h)         # (T,)
+
+    mask = np.abs(a) >= 1e-8
+    if 0 <= skip_idx < len(mask):
+        mask[skip_idx] = False
+    if not np.any(mask):
+        return False
+
+    f  = np.where(mask, 1.0 / np.where(mask, a, 1.0), 0.0)
+    s  = orig - v0s                                 # (T, 3)
+    u  = f * np.einsum('ti,ti->t', s, h)            # (T,)
+    mask &= (u >= 0.0) & (u <= 1.0)
+    if not np.any(mask):
+        return False
+
+    q  = np.cross(s, edge1)                         # (T, 3)
+    vv = f * (q @ d)                                # (T,)
+    mask &= (vv >= 0.0) & (u + vv <= 1.0)
+    if not np.any(mask):
+        return False
+
+    t = f * np.einsum('ti,ti->t', q, edge2)         # (T,)
+    mask &= (t > 1e-6) & (t < dist - eps)
+    return bool(np.any(mask))
+
+
+def _fl_brightness_pixel(
+    hit_pos: np.ndarray,
+    p_src: np.ndarray,
+    h_proj: np.ndarray,
+    cos_tmax: float,
+    v0s: np.ndarray,
+    v1s: np.ndarray,
+    v2s: np.ndarray,
+    curr_idx: int,
+) -> float:
+    """Per-pixel flashlight brightness at ``hit_pos``.
+
+    Returns a value in ``[0, 1]`` based on cone angle from ``h_proj`` and
+    inverse-square distance falloff.  Returns 0 if occluded or outside the
+    cone.
+
+    Parameters
+    ----------
+    hit_pos : np.ndarray
+        3D position of the hit pixel.
+    p_src : np.ndarray
+        Flashlight source position (above current face).
+    h_proj : np.ndarray
+        Flashlight heading direction (unit vector, face-plane projection).
+    cos_tmax : float
+        Cosine of the flashlight cone half-angle.
+    v0s, v1s, v2s : np.ndarray
+        Stacked triangle vertices, shape ``(T, 3)`` each.
+    curr_idx : int
+        Index of current cone in stacked arrays (skipped in occlusion test).
+    """
+    dv   = hit_pos - p_src
+    dist = float(np.linalg.norm(dv))
+    if dist < 1e-12:
+        return 1.0
+    cos_a = float(np.dot(dv / dist, h_proj))
+    if cos_a <= cos_tmax:
+        return 0.0
+    if _shadow_blocked(p_src, hit_pos, v0s, v1s, v2s, skip_idx=curr_idx):
+        return 0.0
+    fl = (cos_a - cos_tmax) / (1.0 - cos_tmax)
+    return fl * fl * fl / (1.0 + 20.0 * dist * dist)
+
+
+def _compute_brightness(
+    hit_pos: np.ndarray,
+    face_normal: np.ndarray,
+    hit_idx: int,
+    curr_idx: int,
+    color_mode: int,
+    r_max: float,
+    sun_pos: np.ndarray | None,
+    sphere_mode: bool,
+    flashlight: bool,
+    p_src: np.ndarray | None,
+    h_proj: np.ndarray | None,
+    cos_tmax: float,
+    v0s: np.ndarray,
+    v1s: np.ndarray,
+    v2s: np.ndarray,
+    fl_v0s: np.ndarray,
+    fl_v1s: np.ndarray,
+    fl_v2s: np.ndarray,
+) -> float:
+    """Compute pixel brightness in [0, 1] given hit geometry and lighting mode.
+
+    Parameters
+    ----------
+    hit_pos : np.ndarray
+        3D position of the hit point.
+    face_normal : np.ndarray
+        Outward unit normal of the hit cone's face.
+    hit_idx : int
+        Index of the hit cone in stacked arrays (skipped in sun shadow test).
+    curr_idx : int
+        Index of current cone in stacked arrays (skipped in flashlight test).
+    color_mode : int
+        0 = wireframe (not called), 1 = radius, 2 = sun.
+    r_max : float
+        Maximum vector magnitude (used for radius normalisation).
+    sun_pos : np.ndarray or None
+        Sun position in scene coordinates.
+    sphere_mode : bool
+        If True, skip sun occlusion (all faces visible on a convex sphere).
+    flashlight : bool
+        Whether the flashlight is active.
+    p_src : np.ndarray or None
+        Flashlight source position.
+    h_proj : np.ndarray or None
+        Flashlight heading direction.
+    cos_tmax : float
+        Cosine of flashlight cone half-angle.
+    v0s, v1s, v2s : np.ndarray
+        Sun shadow test triangle arrays (sun-facing subset), shape ``(T, 3)``.
+    fl_v0s, fl_v1s, fl_v2s : np.ndarray
+        Flashlight shadow test triangle arrays (all triangles), shape ``(T, 3)``.
+
+    Returns
+    -------
+    float
+        Brightness value in [0, 1].
+    """
+    if color_mode == 1:
+        brt = max(0.0, min(1.0,
+                           float(np.linalg.norm(hit_pos)) / r_max * _DIM_LEVEL))
+    elif color_mode == 2 and sun_pos is not None:
+        to_sun = sun_pos - hit_pos
+        dist   = float(np.linalg.norm(to_sun))
+        if dist < 1e-12:
+            brt = _SUN_AMBIENT
         else:
-            # Fast path: one addstr per contiguous run.
-            gaps   = np.where(np.diff(idx) > 1)[0] + 1
-            starts = np.concatenate(([0], gaps))
-            ends   = np.concatenate((gaps - 1, [len(idx) - 1]))
-            for s, e in zip(starts, ends):
-                c0 = cmin + int(idx[s])
-                n  = int(idx[e]) - int(idx[s]) + 1
-                _addstr(scr, r, c0, ch * n, attr)
+            lam = max(0.0, float(np.dot(face_normal, to_sun / dist)))
+            if not sphere_mode and _shadow_blocked(
+                    hit_pos, sun_pos, v0s, v1s, v2s, skip_idx=hit_idx):
+                brt = _SUN_AMBIENT
+            else:
+                brt = min(_SUN_MAX,
+                          _SUN_AMBIENT + (1.0 - _SUN_AMBIENT)
+                          * lam * _SUN_BRIGHTNESS / (dist * dist))
+    else:
+        brt = _DIM_LEVEL
 
+    if flashlight and p_src is not None and h_proj is not None:
+        fl_b = _fl_brightness_pixel(
+            hit_pos, p_src, h_proj, cos_tmax, fl_v0s, fl_v1s, fl_v2s, curr_idx,
+        )
+        if color_mode == 2:
+            brt = max(0.0, min(1.0, brt + fl_b * 0.55))
+        else:
+            brt = max(0.0, min(1.0, _DIM_LEVEL + fl_b * _FL_BOOST))
+
+    return brt
+
+
+# ---------------------------------------------------------------------------
+# JIT pixel-fill kernel
+# ---------------------------------------------------------------------------
+
+@numba.njit(parallel=True, cache=True)
+def _hit_pixels_numba(
+    all_pix: np.ndarray,
+    N_mat:   np.ndarray,
+    c_vec:   np.ndarray,
+    H_mat:   np.ndarray,
+    d:       np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find the closest cone hit for every pixel ray.
+
+    Parameters
+    ----------
+    all_pix : (N, 3)   ray origins (screen pixel positions)
+    N_mat   : (K, 3)   facet plane normals (front-facing cones only)
+    c_vec   : (K,)     plane offsets  dot(n_k, v0_k)
+    H_mat   : (K, 3, 3) halfspace matrices — rows are oriented edge normals
+    d       : (3,)     shared ray direction (-p)
+
+    Returns
+    -------
+    best_t  : (N,) float64  — closest hit distance, inf if no hit
+    hit_idx : (N,) int32    — index into the K front-facing cones, -1 if no hit
+    """
+    N = all_pix.shape[0]
+    K = N_mat.shape[0]
+
+    # Per-cone constants (shared across all pixels)
+    ndotd    = np.empty(K)
+    d_scores = np.empty((K, 3))
+    for k in range(K):
+        s = 0.0
+        for j in range(3):
+            s += N_mat[k, j] * d[j]
+        ndotd[k] = s
+        for h in range(3):
+            s2 = 0.0
+            for j in range(3):
+                s2 += H_mat[k, h, j] * d[j]
+            d_scores[k, h] = s2
+
+    best_t  = np.full(N, np.inf)
+    hit_idx = np.full(N, -1, numba.int32)
+
+    for i in numba.prange(N):
+        for k in range(K):
+            if abs(ndotd[k]) < 1e-12:
+                continue
+            orig_dot_n = 0.0
+            for j in range(3):
+                orig_dot_n += N_mat[k, j] * all_pix[i, j]
+            t = (c_vec[k] - orig_dot_n) / ndotd[k]
+            if t <= 1e-6:
+                continue
+            inside = True
+            for h in range(3):
+                score = d_scores[k, h] * t
+                for j in range(3):
+                    score += H_mat[k, h, j] * all_pix[i, j]
+                if score < -1e-9:
+                    inside = False
+                    break
+            if inside and t < best_t[i]:
+                best_t[i]  = t
+                hit_idx[i] = k
+
+    return best_t, hit_idx
+
+
+# ---------------------------------------------------------------------------
+# Renderer class
+# ---------------------------------------------------------------------------
 
 class Renderer:
-    """Curses-based renderer for a fan and player position on S².
+    """Curses-based backward renderer for a fan and player position on S².
 
-    Projects 3D cone edges as flat line segments onto the tangent plane at
-    the player's position.
+    For each screen pixel a line is fired inward along -p; the first cone face
+    hit is shaded and written to the terminal.  Edges are drawn on top via
+    Bresenham lines (flat mode) or SLERP great-circle arcs (sphere mode).
 
     Parameters
     ----------
@@ -495,11 +686,9 @@ class Renderer:
     """
 
     def __init__(self, fan: Fan, stdscr: _CursesWindow) -> None:
-        self._fan        = fan
-        self._stdscr     = stdscr
-        self._edge_map   = _cone_edge_map(fan)
-        self._depth_buf  = None
-        self._depth_shape = (0, 0)
+        self._fan      = fan
+        self._stdscr   = stdscr
+        self._edge_map = _cone_edge_map(fan)
         _init_colors(self)
 
     def draw(
@@ -520,61 +709,16 @@ class Renderer:
         flashlight:   bool  = False,
         symbol_mode:  int   = 0,
     ) -> None:
-        """Render one frame.
+        """Render one frame."""
 
-        Draws all cone edges as flat projected line segments, highlights the
-        active cone and the pointed-at facet, and renders the player marker.
-
-        Parameters
-        ----------
-        player_pos : np.ndarray
-            Unit vector in R³ giving the player's position on S².
-        player_heading : np.ndarray
-            Unit tangent vector at ``player_pos`` pointing "up".
-        current_cone : tuple[int, ...]
-            Label tuple of the cone containing the player.
-        pointed_facet : tuple[int, int] or None, optional
-            Sorted label pair of the facet the player is aiming at, or
-            ``None``.
-        locked : bool, optional
-            Whether movement is locked.
-        allow_deletion : bool, optional
-            Whether deletion mode is active.
-        color_mode : int, optional
-            Fill mode — 0 wireframe, 1 radius, 2 sun.
-        view_scale : float, optional
-            Projection scale multiplier.
-        flip_status : dict or None, optional
-            Maps each active edge to a bool indicating flippability.
-        is_irregular : bool, optional
-            Whether the current fan is irregular.
-        sphere_mode : bool, optional
-            Whether to render edges as great-circle arcs.
-        agent_active : bool, optional
-            Whether the agent is currently driving movement.
-        sun_angle : float, optional
-            Current rotation angle of the sun (radians).
-        flashlight : bool, optional
-            Whether to overlay the flashlight cone (independent of color
-            mode).
-        symbol_mode : int, optional
-            Index into the symbol ramp styles.
-        """
+        # ── setup ────────────────────────────────────────────────────────────
         scr = self._stdscr
         scr.bkgd(' ', curses.color_pair(_IREG_BG_PAIR) if is_irregular else 0)
         scr.erase()
         rows, cols = scr.getmaxyx()
-        if self._depth_shape != (rows, cols):
-            self._depth_buf   = np.full((rows, cols), -np.inf)
-            self._depth_shape = (rows, cols)
-        else:
-            self._depth_buf.fill(-np.inf)
-        depth_buf = self._depth_buf
         cy, cx = rows // 2, cols // 2
         scale  = float(min(rows, cols // 2) // 2 - 2) * 0.75 * view_scale
         if sphere_mode:
-            # Fit the equator (max projected distance = 1.0) to within
-            # 2 rows of the screen edge, leaving a small margin.
             scale = float(max(1, rows // 2 - _HUD_ROWS - 1))
 
         p        = player_pos
@@ -590,6 +734,7 @@ class Renderer:
             a, b = labels[i], labels[(i + 1) % len(labels)]
             active_edge_set.add((min(a, b), max(a, b)))
 
+        # ── cone data ────────────────────────────────────────────────────────
         ray_cache: dict[int, np.ndarray] = {}
 
         def ray(label: int) -> np.ndarray:
@@ -602,27 +747,253 @@ class Renderer:
                 ray_cache[label] = v
             return ray_cache[label]
 
-        front_cones: set[tuple[int, ...]] = set()
         all_cones_list: list[tuple[int, ...]] = []
-        cone_normals: dict[tuple[int, ...], np.ndarray] = {}
+        cone_normals:   dict[tuple, np.ndarray] = {}
+        cone_verts:     dict[tuple, list]       = {}   # {ct: [v0, v1, v2]}
+        front_cones:    set[tuple[int, ...]]    = set()
+
         for cone in fan.cones():
             clabels = list(cone)
-            ct = tuple(sorted(clabels))
+            ct      = tuple(sorted(clabels))
             all_cones_list.append(ct)
             vs = [ray(l) for l in clabels]
+            cone_verts[ct] = vs
             n  = np.cross(vs[1] - vs[0], vs[2] - vs[0])
             n  = _orient_normal(n, vs[0])
-            nn = np.linalg.norm(n)
+            nn = float(np.linalg.norm(n))
             if nn > 1e-12:
                 n = n / nn
             cone_normals[ct] = n
-            if np.dot(n, view_dir) > 0:
+            if float(np.dot(n, view_dir)) > 0:
                 front_cones.add(ct)
 
+        # Precompute stacked triangle vertex arrays for vectorised shadow tests.
+        _ct_to_idx: dict[tuple, int] = {ct: i for i, ct in enumerate(all_cones_list)}
+        _all_v0s = np.array([cone_verts[ct][0] for ct in all_cones_list])
+        _all_v1s = np.array([cone_verts[ct][1] for ct in all_cones_list])
+        _all_v2s = np.array([cone_verts[ct][2] for ct in all_cones_list])
+
+        # Precompute front-facing cone arrays for the numba pixel-fill kernel.
+        _front_full_idx = np.array(
+            [i for i, ct in enumerate(all_cones_list)
+             if float(np.dot(cone_normals[ct], p)) > 0.0],
+            dtype=np.int32,
+        )
+        _fl_N_mat = np.array([cone_normals[all_cones_list[i]] for i in _front_full_idx])
+        _fl_c_vec = np.array([
+            float(np.dot(cone_normals[all_cones_list[i]],
+                         cone_verts[all_cones_list[i]][0]))
+            for i in _front_full_idx
+        ])
+        _fl_H_list = []
+        for i in _front_full_idx:
+            r0, r1, r2 = cone_verts[all_cones_list[i]]
+            h01 = np.cross(r0, r1); h01 = h01 if np.dot(h01, r2) >= 0 else -h01
+            h12 = np.cross(r1, r2); h12 = h12 if np.dot(h12, r0) >= 0 else -h12
+            h20 = np.cross(r2, r0); h20 = h20 if np.dot(h20, r1) >= 0 else -h20
+            _fl_H_list.append(np.stack([h01, h12, h20]))
+        _fl_H_mat = np.array(_fl_H_list) if _fl_H_list else np.zeros((0, 3, 3))
+
+        # ── camera: player on face surface ───────────────────────────────────
+        curr_ct     = tuple(sorted(current_cone))
+        curr_vs     = cone_verts.get(curr_ct, [np.array([1.,0.,0.])]*3)
+        curr_normal = cone_normals.get(curr_ct, p)
+        p_surface   = _compute_p_surface(p, curr_vs[0], curr_normal)
+        screen_center = p_surface + _FOV_DIST * p
+
+        # ── mode precompute ───────────────────────────────────────────────────
+        r_max: float = 1.0
+        if color_mode == 1:
+            r_max = float(np.linalg.norm(fan.vectors(), axis=1).max()) or 1.0
+
+        sun_pos_cur: np.ndarray | None = None
+        # Sun-facing triangle subset (used for sun shadow tests).
+        # Default to full arrays; overridden below when color_mode==2.
+        _sun_v0s, _sun_v1s, _sun_v2s = _all_v0s, _all_v1s, _all_v2s
+        _sun_sub_idx: dict[int, int] = {}  # full_idx -> sun_subset_idx
+        if color_mode == 2:
+            _sc = float(np.cos(sun_angle))
+            _ss = float(np.sin(sun_angle))
+            sun_pos_cur = np.array([
+                _sc * _SUN_POS[0] - _ss * _SUN_POS[1],
+                _ss * _SUN_POS[0] + _sc * _SUN_POS[1],
+                _SUN_POS[2],
+            ])
+            _sun_dir = sun_pos_cur / (float(np.linalg.norm(sun_pos_cur)) or 1.0)
+            _cone_normals_arr = np.array(
+                [cone_normals[ct] for ct in all_cones_list]
+            )
+            _sun_mask = (_cone_normals_arr @ _sun_dir) > 0
+            _sun_v0s  = _all_v0s[_sun_mask]
+            _sun_v1s  = _all_v1s[_sun_mask]
+            _sun_v2s  = _all_v2s[_sun_mask]
+            _sun_sub_idx = {
+                int(full_i): sub_i
+                for sub_i, full_i in enumerate(np.where(_sun_mask)[0])
+            }
+
+        p_src:    np.ndarray | None = None
+        h_proj:   np.ndarray | None = None
+        cos_tmax: float             = 0.0
+        if flashlight:
+            p_src    = p_surface + _M3_HEIGHT * curr_normal
+            cos_tmax = float(np.cos(np.radians(_M3_THETA_MAX)))
+            # Project heading onto face plane for the 3D cone gate.
+            cam_denom = float(np.dot(p, curr_normal))
+            if abs(cam_denom) > 1e-12:
+                r_proj      = float(np.dot(e1_new, curr_normal)) / cam_denom
+                h_face_raw  = e1_new - r_proj * p
+            else:
+                h_face_raw  = e1_new - float(np.dot(e1_new, curr_normal)) * curr_normal
+            h_face_norm = float(np.linalg.norm(h_face_raw))
+            h_proj      = h_face_raw / h_face_norm if h_face_norm > 1e-12 else e1_new
+
+        # ── per-pixel fill pass ───────────────────────────────────────────────
+        if color_mode != 0:
+            _sym_ramp = _SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][1]
+            _n_r      = self._n_radius
+            dir_vec   = -p   # ray direction for every pixel
+
+            if sphere_mode:
+                # Precompute oriented great-circle edge normals per cone.
+                c_arr: np.ndarray = np.arange(cols - 1, dtype=float)
+                cone_list: list[tuple] = []
+                nAB_list, nBC_list, nCA_list = [], [], []
+                for ct in all_cones_list:
+                    vs   = cone_verts[ct]
+                    nAB  = np.cross(vs[0], vs[1])
+                    nBC  = np.cross(vs[1], vs[2])
+                    nCA  = np.cross(vs[2], vs[0])
+                    if float(np.dot(nAB, vs[0] + vs[1] + vs[2])) < 0.0:
+                        nAB, nBC, nCA = -nAB, -nBC, -nCA
+                    cone_list.append(ct)
+                    nAB_list.append(nAB)
+                    nBC_list.append(nBC)
+                    nCA_list.append(nCA)
+                nAB_mat = np.array(nAB_list)
+                nBC_mat = np.array(nBC_list)
+                nCA_mat = np.array(nCA_list)
+
+                for r in range(rows - _HUD_ROWS):
+                    pixel_row = _pixel_row_positions(
+                        r, c_arr, screen_center, e1_new, e2_new, scale, cx, cy,
+                    )
+                    t_vals = _sphere_row_hits(pixel_row, p)
+                    valid  = np.isfinite(t_vals)
+                    if not np.any(valid):
+                        continue
+                    hit_pts = pixel_row - t_vals[:, np.newaxis] * p[np.newaxis, :]
+                    norms   = np.linalg.norm(hit_pts, axis=1, keepdims=True)
+                    hit_pts = np.where(norms > 1e-12, hit_pts / norms, hit_pts)
+                    tol = -1e-9
+                    in_AB  = (hit_pts @ nAB_mat.T) >= tol
+                    in_BC  = (hit_pts @ nBC_mat.T) >= tol
+                    in_CA  = (hit_pts @ nCA_mat.T) >= tol
+                    inside = in_AB & in_BC & in_CA
+                    inside[~valid] = False
+                    has_hit  = np.any(inside, axis=1)
+                    cone_idx = np.where(has_hit, np.argmax(inside, axis=1), -1)
+                    for i in np.where(has_hit)[0]:
+                        ct      = cone_list[cone_idx[i]]
+                        hit_pos = hit_pts[i]
+                        face_n  = cone_normals[ct]
+                        brt = _compute_brightness(
+                            hit_pos, face_n,
+                            _sun_sub_idx.get(_ct_to_idx[ct], -1),
+                            _ct_to_idx[curr_ct],
+                            color_mode, r_max, sun_pos_cur,
+                            True,
+                            flashlight, p_src, h_proj, cos_tmax,
+                            _sun_v0s, _sun_v1s, _sun_v2s,
+                            _all_v0s, _all_v1s, _all_v2s,
+                        )
+                        t_n   = max(0.0, min(1.0, brt))
+                        s_idx = round(t_n * (len(_sym_ramp) - 1))
+                        ch    = _sym_ramp[max(0, min(len(_sym_ramp) - 1, s_idx))]
+                        pair  = _RADIUS_PAIR_START + round(t_n * (_n_r - 1))
+                        _addstr(scr, r, int(c_arr[i]),
+                                ch, curses.color_pair(pair) | curses.A_BOLD)
+
+            else:
+                # Flat mode: build all pixel positions at once, then one cone
+                # loop over all R*C pixels (replaces 38 row iterations × N cone
+                # iterations with N cone iterations over all pixels together).
+                _R = rows - _HUD_ROWS
+                _C = cols - 1
+                _r_arr = np.arange(_R, dtype=float)
+                _c_arr = np.arange(_C, dtype=float)
+                _s_arr = (cy - _r_arr) / scale
+                _u_arr = (_c_arr - cx) / (scale * 2.0)
+                # (R, 3) row centres, then broadcast to (R, C, 3) → (R*C, 3)
+                _row_centers = screen_center + _s_arr[:, None] * e1_new[None, :]
+                _all_pix = (
+                    _row_centers[:, None, :]
+                    + _u_arr[None, :, None] * e2_new[None, None, :]
+                ).reshape(-1, 3)
+
+                _best_t, _hit_front = _hit_pixels_numba(
+                    _all_pix, _fl_N_mat, _fl_c_vec, _fl_H_mat, dir_vec,
+                )
+                # map front-facing indices back to all_cones_list indices
+                _hit_idx = np.full(_R * _C, -1, dtype=np.int32)
+                _valid_hits = _hit_front >= 0
+                _hit_idx[_valid_hits] = _front_full_idx[_hit_front[_valid_hits]]
+
+                _hit_flat = np.where(_hit_idx >= 0)[0]
+                if len(_hit_flat):
+                    _hit_pix  = _all_pix[_hit_flat]
+                    _hit_pos  = _hit_pix + _best_t[_hit_flat, None] * dir_vec
+                    _hit_ci   = _hit_idx[_hit_flat]
+                    _rows_out = (_hit_flat // _C).astype(int)
+                    _cols_out = (_hit_flat  % _C).astype(int)
+                    _n_ramp   = len(_sym_ramp)
+
+                    if color_mode == 1 and not flashlight:
+                        # Radius mode, no lighting: vectorise brightness fully.
+                        _brts  = np.clip(
+                            np.linalg.norm(_hit_pos, axis=1) / r_max * _DIM_LEVEL,
+                            0.0, 1.0,
+                        )
+                        _sidxs = np.clip(
+                            np.round(_brts * (_n_ramp - 1)).astype(int),
+                            0, _n_ramp - 1,
+                        )
+                        _pairs = (
+                            _RADIUS_PAIR_START
+                            + np.round(_brts * (_n_r - 1)).astype(int)
+                        )
+                        for k in range(len(_hit_flat)):
+                            _addstr(scr, _rows_out[k], _cols_out[k],
+                                    _sym_ramp[_sidxs[k]],
+                                    curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
+                    else:
+                        for k in range(len(_hit_flat)):
+                            ct     = all_cones_list[_hit_ci[k]]
+                            face_n = cone_normals[ct]
+                            brt = _compute_brightness(
+                                _hit_pos[k], face_n,
+                                _sun_sub_idx.get(_ct_to_idx[ct], -1),
+                                _ct_to_idx[curr_ct],
+                                color_mode, r_max, sun_pos_cur,
+                                False,
+                                flashlight, p_src, h_proj, cos_tmax,
+                                _sun_v0s, _sun_v1s, _sun_v2s,
+                                _all_v0s, _all_v1s, _all_v2s,
+                            )
+                            t_n   = max(0.0, min(1.0, brt))
+                            s_idx = round(t_n * (_n_ramp - 1))
+                            ch    = _sym_ramp[max(0, min(_n_ramp - 1, s_idx))]
+                            pair  = _RADIUS_PAIR_START + round(t_n * (_n_r - 1))
+                            _addstr(scr, _rows_out[k], _cols_out[k],
+                                    ch, curses.color_pair(pair) | curses.A_BOLD)
+
+        # ── screen_pt and _draw_edge closures (used by edge pass) ────────────
         def screen_pt(label: int) -> tuple[int, int] | None:
             coord = _project(ray(label), view_dir, e1_new, e2_new)
             if coord is None:
                 return None
+            # Columns scaled by 2× to compensate for terminal character cells
+            # being ~2× taller than wide, preserving circular aspect ratio.
             col = cx + int(round(coord[0] * scale * 2))
             row = cy - int(round(coord[1] * scale))
             return (row, col)
@@ -641,7 +1012,6 @@ class Renderer:
                 _draw_line(scr, r0 + 1, c0, r1 + 1, c1, ch, attr)
                 return
             # Sphere mode: trace the great circle arc via SLERP.
-            # ray() already returns unit vectors in sphere mode.
             u = ray(a)
             v = ray(b)
             cos_a   = float(np.clip(np.dot(u, v), -1.0, 1.0))
@@ -655,7 +1025,6 @@ class Renderer:
                     (np.sin((1.0 - t) * theta) / sin_th) * u
                     + (np.sin(t * theta) / sin_th) * v
                 ) if sin_th > 1e-9 else u
-                # Clip at the equator: don't draw back-hemisphere arc segments.
                 if float(np.dot(w, view_dir)) < 0.0:
                     prev = None
                     continue
@@ -670,258 +1039,15 @@ class Renderer:
                     _draw_line(scr, prev[0] + 1, prev[1], row_w + 1, col_w, ch, attr)
                 prev = (row_w, col_w)
 
-        if color_mode == 1:  # radius
-            _r_max = float(
-                np.linalg.norm(fan.vectors(), axis=1).max()
-            ) or 1.0
-
-        sorted_front = sorted(
-            front_cones,
-            key=lambda ct: float(
-                np.dot(np.mean([ray(l) for l in ct], axis=0), view_dir)
-            ),
-        )
-
-        if flashlight:
-            # Flashlight source: above the current face centroid along its outward
-            # normal.  This is correct for any polytope, not just unit-sphere fans.
-            _cos_tmax = float(np.cos(np.radians(_M3_THETA_MAX)))
-            _curr_vv = [np.asarray(ray(l), float) for l in current_cone]
-            _curr_nf = np.cross(
-                _curr_vv[1] - _curr_vv[0], _curr_vv[2] - _curr_vv[0],
-            )
-            _curr_nn = float(np.linalg.norm(_curr_nf))
-            if _curr_nn > 1e-12:
-                _curr_nf = _curr_nf / _curr_nn
-            _curr_nf = _orient_normal(_curr_nf, _curr_vv[0])
-            # Source: project p onto the current face plane, then step outward
-            # along the face normal.  p (unit sphere) is inside the cube at
-            # diagonal positions, so p + eps*nf would place the source inside
-            # the face — causing incorrect occlusion near edges.
-            _curr_plane_d = float(np.dot(
-                (_curr_vv[0] + _curr_vv[1] + _curr_vv[2]) / 3.0, _curr_nf
-            ))
-            _curr_denom   = float(np.dot(p, _curr_nf))
-            if abs(_curr_denom) > 1e-12:
-                _t_face = _curr_plane_d / _curr_denom
-            else:
-                _t_face = float(np.linalg.norm(
-                    (_curr_vv[0] + _curr_vv[1] + _curr_vv[2]) / 3.0
-                ))
-            _p_src = p * _t_face + _M3_HEIGHT * _curr_nf
-            _curr_ct = tuple(sorted(current_cone))
-            # h_proj: face-plane projection of heading.  Used ONLY for the 3D
-            # hemisphere gate (prevents the screen-space cone from leaking
-            # around polytope corners).  It is NOT used as the 2D beam
-            # direction — cube face normals deviate from p, so projecting
-            # e1_new onto the face plane would tilt the on-screen beam away
-            # from the heading direction.  The 2D cone always points straight
-            # up on screen (= forward, matching the heading direction).
-            _cam_denom = float(np.dot(p, _curr_nf))
-            if abs(_cam_denom) > 1e-12:
-                _r_proj   = float(np.dot(e1_new, _curr_nf)) / _cam_denom
-                _h_face_raw = e1_new - _r_proj * p
-            else:
-                _h_face_raw = e1_new - float(np.dot(e1_new, _curr_nf)) * _curr_nf
-            _h_face_norm = float(np.linalg.norm(_h_face_raw))
-            _h_proj = _h_face_raw / _h_face_norm if _h_face_norm > 1e-12 else e1_new
-
-            # Build per-face data (vertices, centroid, outward normal).
-            _m3_faces: dict = {}
-            for _ct0 in sorted_front:
-                _vv0 = [np.asarray(ray(l), float) for l in _ct0]
-                _c0  = (_vv0[0] + _vv0[1] + _vv0[2]) / 3.0
-                _nf0 = np.cross(_vv0[1] - _vv0[0], _vv0[2] - _vv0[0])
-                _nn0 = float(np.linalg.norm(_nf0))
-                if _nn0 > 1e-12:
-                    _nf0 = _nf0 / _nn0
-                _nf0 = _orient_normal(_nf0, _vv0[0])
-                _m3_faces[_ct0] = (_vv0, _c0, _nf0)
-
-            # Per-face flashlight brightness: occlusion + smooth cone falloff.
-            # _curr_ct is excluded from occlusion checks — it is the face the
-            # player stands on and its plane always intersects forward rays.
-            # Per-face occlusion gate: 1 if face is reachable from _p_src,
-            # 0 if blocked.  Cone clipping is done per-pixel in the shade_fn.
-            _EPS = 1e-3
-            _fl_occluded: dict = {}
-            for _ct0, (_vv0, _c0, _nf0) in _m3_faces.items():
-                _dv    = _c0 - _p_src
-                _dist0 = float(np.linalg.norm(_dv))
-                if _dist0 < 1e-12:
-                    _fl_occluded[_ct0] = True
-                    continue
-                _dir0 = _dv / _dist0
-                _ok = True
-                for _ct1, (_vv1, _c1, _nf1) in _m3_faces.items():
-                    if _ct1 == _ct0 or _ct1 == _curr_ct:
-                        continue
-                    # Skip triangles co-planar with the current face.
-                    # _p_src is placed just outside the current face plane, so
-                    # co-planar triangles intersect every outgoing ray at t≈0
-                    # and would spuriously occlude all adjacent-side faces.
-                    if float(np.dot(_nf1, _curr_nf)) > 0.99:
-                        continue
-                    _t1 = _ray_intersects_triangle(
-                        _p_src, _dir0, _vv1[0], _vv1[1], _vv1[2],
-                    )
-                    if _t1 is not None and _EPS < _t1 < _dist0 - 1e-3:
-                        _ok = False
-                        break
-                _fl_occluded[_ct0] = not _ok
-
-        if color_mode == 2:  # sun
-            # Rotate the sun position around the z-axis by sun_angle.
-            _sc, _ss = float(np.cos(sun_angle)), float(np.sin(sun_angle))
-            _sun_pos_cur = np.array([
-                _sc * _SUN_POS[0] - _ss * _SUN_POS[1],
-                _ss * _SUN_POS[0] + _sc * _SUN_POS[1],
-                _SUN_POS[2],
-            ])
-
-            # Build per-triangle sun visibility: face must face the sun and
-            # the ray from centroid to sun must not be blocked by another face.
-            _sun_all: dict = {}
-            for _ct0 in all_cones_list:
-                _vv0 = [np.asarray(ray(l), float) for l in _ct0]
-                _c0  = (_vv0[0] + _vv0[1] + _vv0[2]) / 3.0
-                _nf0 = cone_normals[_ct0]
-                _sun_all[_ct0] = (_vv0, _c0, _nf0)
-
-            _EPS_SUN = 1e-3
-            # Per-triangle sun factor in [0, 1].
-            # Non-occluded faces: max(0, dot(face_normal, sun_dir)) — smoothly
-            # fades to 0 at the terminator rather than cutting off abruptly.
-            # Occluded faces: 0 (hard shadow, geometrically correct).
-            _sun_factor: dict = {}
-            for _ct0, (_vv0, _c0, _nf0) in _sun_all.items():
-                _to_sun = _sun_pos_cur - _c0
-                _dist0  = float(np.linalg.norm(_to_sun))
-                if _dist0 < 1e-12:
-                    _sun_factor[_ct0] = 0.0
-                    continue
-                _dir0     = _to_sun / _dist0
-                _face_dot = max(0.0, float(np.dot(_nf0, _dir0)))
-                # Occlusion: ray from centroid toward sun must clear all faces.
-                _ok = True
-                for _ct1, (_vv1, _c1, _nf1) in _sun_all.items():
-                    if _ct1 == _ct0:
-                        continue
-                    _t1 = _ray_intersects_triangle(
-                        _c0 + _EPS_SUN * _dir0, _dir0,
-                        _vv1[0], _vv1[1], _vv1[2],
-                    )
-                    if _t1 is not None and _t1 < _dist0 - _EPS_SUN:
-                        _ok = False
-                        break
-                _sun_factor[_ct0] = _face_dot if _ok else 0.0
-
-        # Build a per-pixel shade function.
-        _n_r    = self._n_radius
-        _brt_ref: list = [_DIM_LEVEL]        # still used for per-face occlusion gate
-        _sun_factor_ref: list | None = None
-
-        _FL_BOOST = 1.55   # max brightness increase above _DIM_LEVEL
-        _sym_ramp = _SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][1]
-
-        def _sym_char(t: float) -> str:
-            """Map brightness t∈[0,1] to a character from the current ramp."""
-            idx = round(t * (len(_sym_ramp) - 1))
-            return _sym_ramp[max(0, min(len(_sym_ramp) - 1, idx))]
-
-        def _fl_brightness(pos: np.ndarray, r: int, c: int) -> float:
-            """Flashlight boost using a true 3D cone from p_src along h_proj,
-            with distance falloff.  Screen coords are unused — the 3D direction
-            from the source to the pixel position is what determines membership,
-            so the cone cannot bleed around polytope corners."""
-            dv   = pos - _p_src
-            dist = float(np.linalg.norm(dv))
-            if dist < 1e-12:
-                fl = 1.0
-            else:
-                cos_a = float(np.dot(dv / dist, _h_proj))
-                if cos_a <= _cos_tmax:
-                    return 0.0
-                fl = (cos_a - _cos_tmax) / (1.0 - _cos_tmax)
-            dist_fall = 1.0 / (1.0 + 20.0 * dist * dist)
-            return fl * fl * fl * dist_fall
-
-        if color_mode == 1:
-            _r_max_val = _r_max
-            def _shade_fn(
-                pos: np.ndarray, normal: np.ndarray,
-                depth: float, r: int, c: int,
-            ):
-                fl_b = _fl_brightness(pos, r, c) if (flashlight and _brt_ref[0] > 0) else 0.0
-                brt  = _DIM_LEVEL + fl_b * _FL_BOOST
-                t = max(0.0, min(1.0, float(np.linalg.norm(pos)) / _r_max_val * brt))
-                pair = _RADIUS_PAIR_START + round(t * (_n_r - 1))
-                return _sym_char(t), curses.color_pair(pair) | curses.A_BOLD
-
-        elif color_mode == 2:  # sun
-            _sun_factor_ref = [1.0]
-            def _shade_fn(  # type: ignore[misc]
-                pos: np.ndarray, normal: np.ndarray,
-                depth: float, r: int, c: int,
-            ):
-                fl_b = _fl_brightness(pos, r, c) if (flashlight and _brt_ref[0] > 0) else 0.0
-                pos_n = float(np.linalg.norm(pos))
-                n = pos / pos_n if pos_n > 1e-12 else normal
-                to_sun = _sun_pos_cur - pos
-                dist   = float(np.linalg.norm(to_sun))
-                factor = _sun_factor_ref[0]  # type: ignore[index]
-                if dist < 1e-12:
-                    t = _SUN_AMBIENT
-                else:
-                    lam = max(0.0, float(np.dot(n, to_sun / dist)))
-                    t = min(_SUN_MAX, _SUN_AMBIENT
-                            + factor * (1.0 - _SUN_AMBIENT) * lam * _SUN_BRIGHTNESS / (dist * dist))
-                # Additive flashlight: lifts dark areas noticeably, barely
-                # visible in already-bright sun-lit areas.
-                t = max(0.0, min(1.0, t + fl_b * 0.55))
-                pair = _RADIUS_PAIR_START + round(t * (_n_r - 1))
-                return _sym_char(t), curses.color_pair(pair) | curses.A_BOLD
-
-        else:
-            _shade_fn = None  # type: ignore[assignment]
-
+        # ── edge pass ────────────────────────────────────────────────────────
         if sphere_mode:
-            # Sphere visibility: include a cone if any vertex is in the front
-            # hemisphere (dot > 0).  Both sets use the same condition; the per-edge
-            # check below (`both endpoints behind`) prevents drawing fully invisible
-            # arcs.  A centroid check (sum of dots > 0) was previously used for
-            # sphere_front_edge, but it excluded equator-straddling cones whose
-            # edges are still partially visible — causing many edges to disappear.
             sphere_front_edge: set[tuple[int, ...]] = set()
-            sphere_front_fill: set[tuple[int, ...]] = set()
             for ct in all_cones_list:
-                vs   = [ray(l) for l in ct]
+                vs   = cone_verts[ct]
                 dots = [float(np.dot(v, view_dir)) for v in vs]
                 if any(d > 0 for d in dots):
                     sphere_front_edge.add(ct)
-                    sphere_front_fill.add(ct)
 
-            # Fill pass (color_mode != 0): back-to-front, correct arc-bounded
-            # geometry via back-projection.
-            if color_mode != 0:
-                _sorted_sph = sorted(
-                    sphere_front_fill,
-                    key=lambda ct: float(
-                        np.dot(np.mean([ray(l) for l in ct], axis=0), view_dir)
-                    ),
-                )
-                for ct in _sorted_sph:
-                    u, v, w = [ray(l) for l in ct]
-                    _brt_ref[0] = _DIM_LEVEL
-                    _fill_sph_triangle(
-                        scr, u, v, w,
-                        view_dir, e1_new, e2_new, scale,
-                        "\u2591", curses.color_pair(_FILL_PAIR),
-                        shade_fn=_shade_fn,
-                        depth_buf=depth_buf if _shade_fn is not None else None,
-                    )
-
-            # Arc pass — drawn after fills so arcs always appear on top.
             _drawn_edges: set[tuple[int, int]] = set()
             for ct in sphere_front_edge:
                 clabels = list(ct)
@@ -931,7 +1057,6 @@ class Renderer:
                     if edge in _drawn_edges:
                         continue
                     _drawn_edges.add(edge)
-                    # Skip edges where both endpoints are behind the equator.
                     if (float(np.dot(ray(a), view_dir)) < 0 and
                             float(np.dot(ray(b), view_dir)) < 0):
                         continue
@@ -940,51 +1065,33 @@ class Renderer:
                     is_active = edge in active_edge_set
                     ch_e, attr_e = _edge_attrs(edge, is_active, flip_status)
                     _draw_edge(a, b, ch_e, attr_e)
+
         else:
+            sorted_front = sorted(
+                front_cones,
+                key=lambda ct: float(
+                    np.dot(np.mean([ray(l) for l in ct], axis=0), view_dir)
+                ),
+            )
+            _drawn_edges_f: set[tuple[int, int]] = set()
             for ct in sorted_front:
                 clabels = list(ct)
                 pts = [screen_pt(l) for l in clabels]
                 if any(pt is None for pt in pts):
                     continue
-                # Painter's-algorithm occlusion: flood the triangle with background
-                # before drawing content so near faces erase far edges beneath them.
-                v3d_ct = [np.asarray(ray(l), float) for l in clabels]
-                _fill_triangle(scr, pts, " ", 0)  # type: ignore[arg-type]
-                # Gate: 0 if occluded by flashlight or more than 90° from the
-                # face-projected heading in 3D (prevents screen-space cone from
-                # leaking around corners). Per-pixel cone clipping in _shade_fn.
-                if flashlight:
-                    if ct == _curr_ct:
-                        _brt_ref[0] = 1
-                    else:
-                        # Use per-vertex hemisphere check: allow the per-pixel shader
-                        # to run if ANY vertex is in the forward hemisphere.  A
-                        # centroid check would kill an entire face whose centroid
-                        # just barely falls behind h_proj, producing hard cutoff edges.
-                        _in_3d_hemi = any(
-                            float(np.dot(v - _p_src, _h_proj)) > 0.0
-                            for v in v3d_ct
-                        )
-                        _brt_ref[0] = 0 if (_fl_occluded.get(ct, False) or not _in_3d_hemi) else 1
-                else:
-                    _brt_ref[0] = _DIM_LEVEL
-                if _shade_fn is not None:
-                    if color_mode == 2 and _sun_factor_ref is not None:
-                        _sun_factor_ref[0] = _sun_factor.get(ct, 0.0)
-                    _fill_triangle(
-                        scr, pts, "\u2592", 0,  # type: ignore[arg-type]
-                        v3d=v3d_ct, shade_fn=_shade_fn,
-                        view_dir=view_dir, depth_buf=depth_buf,
-                    )
                 for i in range(len(clabels)):
                     a, b = clabels[i], clabels[(i + 1) % len(clabels)]
                     edge = (min(a, b), max(a, b))
+                    if edge in _drawn_edges_f:
+                        continue
+                    _drawn_edges_f.add(edge)
                     if pointed_facet and edge == pointed_facet:
                         continue
                     is_active = edge in active_edge_set
                     ch_e, attr_e = _edge_attrs(edge, is_active, flip_status)
                     _draw_edge(a, b, ch_e, attr_e)
 
+        # ── pointed facet highlight ──────────────────────────────────────────
         if pointed_facet:
             a, b = pointed_facet
             if self._edge_map.get(pointed_facet, set()) & front_cones:
@@ -996,6 +1103,7 @@ class Renderer:
                 else:
                     _draw_edge(a, b, "*", curses.color_pair(5) | curses.A_BOLD)
 
+        # ── player marker ────────────────────────────────────────────────────
         coord = _project(p, view_dir, e1_new, e2_new)
         if coord is not None:
             col = cx + int(round(coord[0] * scale * 2))
@@ -1006,7 +1114,7 @@ class Renderer:
                 if 0 <= r < rows - _HUD_ROWS and 0 <= c + 1 < cols - 1:
                     _addstr(scr, r, c, s, attr)
 
-
+        # ── irregular banner ─────────────────────────────────────────────────
         if is_irregular:
             _ireg_lines = [
                 "                                    ",
@@ -1015,11 +1123,10 @@ class Renderer:
             ]
             _ireg_attr = curses.color_pair(_IREG_BG_PAIR) | curses.A_BOLD
             for _ii, _il in enumerate(_ireg_lines):
-                _ir = _ii
-                _ic = 0
-                if 0 <= _ir < rows - _HUD_ROWS:
-                    _addstr(scr, _ir, _ic, _il[: cols - 1 - _ic], _ireg_attr)
+                if 0 <= _ii < rows - _HUD_ROWS:
+                    _addstr(scr, _ii, 0, _il[: cols - 1], _ireg_attr)
 
+        # ── HUD ──────────────────────────────────────────────────────────────
         facet_str  = str(pointed_facet) if pointed_facet else "none"
         tail       = "[q]uit"
         cone_str   = f"  cone={current_cone}"
@@ -1041,25 +1148,22 @@ class Renderer:
         lit_str    = "  [X]light:ON" if flashlight else "  [X]light:off"
         lit_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if flashlight else curses.color_pair(4))
-        # ── HUD row 0 (rows-2): [q]uit  cone=…  [A]sphere  [S]:color  [D]el  [W]agent  [F]dbg
-        # ── HUD row 1 (rows-1):          facet=…  [Z]:symbol  [X]ight   [C]ix
-        #
+
+        # ── HUD row 0 (rows-2): [q]uit  cone=…  [A]sphere  [S]fill  [D]el  [W]agent  [F]dbg
+        # ── HUD row 1 (rows-1):          facet=…  [Z]sym    [X]light [C]fix
         # Stacked key columns match physical keyboard columns (Q-A-Z, W-S-X, E-D-C).
-        # cone/facet are stacked; [Z]/[X]/[C] align under [A]/[S]/[D] respectively.
         try:
-            # Clear HUD rows so the irregular-fan red background doesn't bleed in.
             _blank = " " * (cols - 1)
             for _hr in range(_HUD_ROWS):
                 scr.addstr(rows - _HUD_ROWS + _hr, 0, _blank, curses.color_pair(4))
 
-            # --- row 0 ---
             col = 0
             r0  = rows - _HUD_ROWS
 
             scr.addstr(r0, col, tail[: cols - 1], curses.color_pair(4))
             col += len(tail)
 
-            # Column widths are max(row-0 item, row-1 item) so neither row clips.
+            # Column widths: max(row-0 item, row-1 item) so neither row clips.
             _cone_w = max(len(cone_str), len(facet_row1))
             _sph_w  = max(len(sph_str),  len(sym_str))
             _col_w  = max(len(col_str),  len(lit_str))
@@ -1093,24 +1197,17 @@ class Renderer:
                 scr.addstr(r0, col, "  [F]dbg"[: cols - 1 - col],
                            curses.color_pair(4))
 
-            # --- row 1 ---
             r1 = rows - 1
 
-            # facet aligns under cone
-            # Each row-1 item is truncated to its column span (next col − current col)
-            # to prevent overlap when the label is wider than the row-0 counterpart.
             if cone_col < cols - 1:
                 scr.addstr(r1, cone_col,
                            facet_row1[: sph_col - cone_col], curses.color_pair(4))
-
             if sph_col < cols - 1:
                 scr.addstr(r1, sph_col,
                            sym_str[: col_col - sph_col], curses.color_pair(4))
-
             if col_col < cols - 1:
                 scr.addstr(r1, col_col,
                            lit_str[: del_col - col_col], lit_attr)
-
             if del_col < cols - 1:
                 scr.addstr(r1, del_col,
                            lock_str[: cols - 1 - del_col], lock_attr)
