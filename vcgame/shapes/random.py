@@ -1,10 +1,9 @@
 """
 Generate integer vectors from the surface of the convex hull of a set
-of random centrally-symmetric lattice points.
+of random lattice points whose convex hull strictly contains the origin.
 
-Central symmetry (for every sampled v, -v is also included) guarantees
-the origin is strictly inside the hull, so the resulting vectors span
-all of R³ and the triangulated fan is complete.
+If a sampled set does not strictly contain the origin (i.e. the positive
+span is not all of R³), the set is discarded and resampled.
 """
 
 from __future__ import annotations
@@ -76,22 +75,23 @@ def _surface_lattice_points(
 
 def random_vectors(
     seed:      int = 1102,
-    n_pairs:   int = 6,
+    n_vectors: int = 12,
     max_coord: int = 3,
 ) -> list[list[int]]:
-    """Sample random centrally-symmetric vectors and return hull surface points.
+    """Sample random integer vectors whose convex hull strictly contains origin.
 
-    Samples ``n_pairs`` random non-zero integer vectors in
-    [−max_coord, max_coord]³ together with their negatives, computes the
-    convex hull, and returns all non-origin lattice points on the hull
+    Samples ``n_vectors`` distinct non-zero integer vectors from
+    [−max_coord, max_coord]³, checks that the origin lies in the strict
+    interior of their convex hull (equivalently, the positive span is R³),
+    and retries if not. Returns all non-origin lattice points on the hull
     surface.
 
     Parameters
     ----------
     seed : int, optional
         RNG seed. Defaults to 1102.
-    n_pairs : int, optional
-        Number of (v, −v) pairs to seed the hull with. Must be >= 1.
+    n_vectors : int, optional
+        Number of seed vectors. Must be >= 4. Defaults to 12.
     max_coord : int, optional
         Coordinate range (inclusive). Must be >= 1.
 
@@ -103,25 +103,31 @@ def random_vectors(
     Raises
     ------
     ValueError
-        If ``n_pairs`` < 1 or ``max_coord`` < 1.
+        If ``n_vectors`` < 4 or ``max_coord`` < 1.
     """
-    if n_pairs < 1:
-        raise ValueError(f"n_pairs must be >= 1, got {n_pairs}")
+    if n_vectors < 4:
+        raise ValueError(f"n_vectors must be >= 4, got {n_vectors}")
     if max_coord < 1:
         raise ValueError(f"max_coord must be >= 1, got {max_coord}")
 
-    rng  = np.random.default_rng(seed)
-    seen: set[tuple[int, ...]] = set()
+    rng = np.random.default_rng(seed)
 
-    while len(seen) // 2 < n_pairs:
-        v  = rng.integers(-max_coord, max_coord + 1, size=3)
-        if np.all(v == 0):
+    while True:
+        seen: set[tuple[int, ...]] = set()
+        while len(seen) < n_vectors:
+            v  = rng.integers(-max_coord, max_coord + 1, size=3)
+            vt = tuple(v.tolist())
+            if vt == (0, 0, 0) or vt in seen:
+                continue
+            seen.add(vt)
+
+        pts = [list(p) for p in seen]
+
+        try:
+            hull = ConvexHull(pts)
+        except Exception:
             continue
-        v_pos = tuple(v.tolist())
-        v_neg = tuple((-v).tolist())
-        seen.add(v_pos)
-        seen.add(v_neg)
 
-    pts  = [list(p) for p in seen]
-    hull = ConvexHull(pts)
-    return _surface_lattice_points(pts, hull)
+        # Origin is strictly interior iff all half-space offsets are negative.
+        if np.all(hull.equations[:, 3] < 0):
+            return _surface_lattice_points(pts, hull)

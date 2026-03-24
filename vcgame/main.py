@@ -33,7 +33,7 @@ def _fix_negative_args() -> None:
     sys.argv = fixed
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     p = argparse.ArgumentParser(
         prog="vcgame",
         description="Navigate a simplicial fan on S².",
@@ -62,6 +62,20 @@ def _parse_args() -> argparse.Namespace:
         choices=["cube", "trunc_oct", "random", "reflexive"],
         default="cube",
         help="Vector configuration shape (default: cube).",
+    )
+    p.add_argument(
+        "-n",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Grid size for 'cube' (nxnxn) or vector count for 'random'.",
+    )
+    p.add_argument(
+        "--maxcoord",
+        type=int,
+        default=3,
+        metavar="C",
+        help="Coordinate range for 'random' (default: 3).",
     )
     p.add_argument(
         "--seed",
@@ -109,17 +123,30 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Start with flashlight on.",
     )
-    return p.parse_args()
+    return p, p.parse_args()
 
 
 def main() -> None:
     _fix_negative_args()
-    args = _parse_args()
+    p, args = _parse_args()
+
+    if args.shape in ("trunc_oct", "reflexive"):
+        if args.n is not None:
+            p.error(f"-n is not valid for --shape {args.shape}")
+        if args.maxcoord != 3:
+            p.error(f"--maxcoord is not valid for --shape {args.shape}")
 
     from regfans import VectorConfiguration
     from shapes import get_vectors
 
-    vectors = get_vectors(args.shape, seed=args.seed, polytope_id=args.polytope)
+    vectors = get_vectors(
+        args.shape,
+        seed=args.seed,
+        polytope_id=args.polytope,
+        n=args.n,
+        n_vectors=args.n,
+        max_coord=args.maxcoord,
+    )
     vc  = VectorConfiguration(vectors)
     fan = vc.triangulate()
 

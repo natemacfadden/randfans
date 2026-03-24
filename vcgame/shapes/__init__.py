@@ -16,8 +16,12 @@ if TYPE_CHECKING:
 
 
 _REGISTRY: dict[str, object] = {
-    "cube":      lambda **kw: cube_vectors(kw["n"]),
-    "random":    lambda **kw: random_vectors(seed=kw["seed"]),
+    "cube":      lambda **kw: cube_vectors(kw["n"] or 3),
+    "random":    lambda **kw: random_vectors(
+                     seed=kw["seed"],
+                     n_vectors=kw["n_vectors"] or 12,
+                     max_coord=kw["max_coord"],
+                 ),
     "reflexive": lambda **kw: reflexive_vectors(polytope_id=kw["polytope_id"]),
     "trunc_oct": lambda **kw: trunc_oct_vectors(),
 }
@@ -29,7 +33,9 @@ def get_vectors(
     *,
     seed: int = 1102,
     polytope_id: int = 0,
-    n: int = 3,
+    n: int | None = None,
+    n_vectors: int | None = None,
+    max_coord: int = 3,
 ) -> list[list[int]]:
     """Return integer vectors for the named shape.
 
@@ -41,8 +47,12 @@ def get_vectors(
         RNG seed for ``"random"`` shapes.
     polytope_id : int, optional
         Polytope index for ``"reflexive"`` shapes (0–4318).
-    n : int, optional
-        Cube size for ``"cube"`` shapes.
+    n : int or None, optional
+        Grid size for ``"cube"`` (default 3). Ignored for other shapes.
+    n_vectors : int or None, optional
+        Seed vector count for ``"random"`` (default 12). Ignored for other shapes.
+    max_coord : int, optional
+        Coordinate range for ``"random"`` shapes (default 3).
 
     Returns
     -------
@@ -58,7 +68,10 @@ def get_vectors(
         raise ValueError(
             f"Unknown shape {name!r}. Choose from: {', '.join(_SHAPES)}"
         )
-    return _REGISTRY[name](n=n, seed=seed, polytope_id=polytope_id)
+    return _REGISTRY[name](
+        n=n, n_vectors=n_vectors, seed=seed,
+        polytope_id=polytope_id, max_coord=max_coord,
+    )
 
 
 def vectors_to_fan(vectors: list[list[int]]) -> Fan:
@@ -82,7 +95,9 @@ def load_shape(
     *,
     seed: int = 1102,
     polytope_id: int = 0,
-    n: int = 3,
+    n: int | None = None,
+    n_vectors: int | None = None,
+    max_coord: int = 3,
 ) -> Fan:
     """Generate vectors and triangulate into a fan in one step.
 
@@ -94,8 +109,12 @@ def load_shape(
         RNG seed for ``"random"`` shapes.
     polytope_id : int, optional
         Polytope index for ``"reflexive"`` shapes (0–4318).
-    n : int, optional
-        Cube size for ``"cube"`` shapes.
+    n : int or None, optional
+        Grid size for ``"cube"`` (default 3).
+    n_vectors : int or None, optional
+        Seed vector count for ``"random"`` (default 12).
+    max_coord : int, optional
+        Coordinate range for ``"random"`` shapes (default 3).
 
     Returns
     -------
@@ -103,5 +122,8 @@ def load_shape(
         A triangulated fan.
     """
     return vectors_to_fan(
-        get_vectors(name, seed=seed, polytope_id=polytope_id, n=n)
+        get_vectors(
+            name, seed=seed, polytope_id=polytope_id,
+            n=n, n_vectors=n_vectors, max_coord=max_coord,
+        )
     )

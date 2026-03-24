@@ -2,9 +2,9 @@
 
 Usage
 -----
-    python -m shapes cube
-    python -m shapes cube --n 5
+    python -m shapes cube -n 5
     python -m shapes random --seed 42
+    python -m shapes random -n 20 --maxcoord 4
     python -m shapes reflexive --polytope_id 7
     python -m shapes trunc_oct
 """
@@ -27,11 +27,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Shape to generate.",
     )
     p.add_argument(
-        "--n",
+        "-n",
         type=int,
         default=None,
         metavar="N",
-        help="Cube grid size (odd, >= 3). Required for 'cube'.",
+        help="Grid size for 'cube' (odd, >= 3) or seed vector count for 'random'. Required for 'cube'.",
+    )
+    p.add_argument(
+        "--maxcoord",
+        type=int,
+        default=3,
+        metavar="C",
+        help="Coordinate range for 'random' (default: 3).",
     )
     p.add_argument(
         "--seed",
@@ -54,11 +61,18 @@ def main() -> None:
     p = _build_parser()
     args = p.parse_args()
     if args.shape == "cube" and args.n is None:
-        p.error("--n is required for 'cube'")
+        p.error("-n is required for 'cube'")
+    if args.shape in ("trunc_oct", "reflexive"):
+        if args.n is not None:
+            p.error(f"-n is not valid for '{args.shape}'")
+        if args.maxcoord != 3:
+            p.error(f"--maxcoord is not valid for '{args.shape}'")
 
     vectors = get_vectors(
         args.shape,
         n=args.n,
+        n_vectors=args.n,
+        max_coord=args.maxcoord,
         seed=args.seed,
         polytope_id=args.polytope_id,
     )
