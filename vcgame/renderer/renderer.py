@@ -26,7 +26,7 @@ _SLERP_STEP   = 0.04   # arc-length step for spherical triangle sampling
 _SUN_DISTANCE = 20.0
 _SUN_REF      = np.array([1.0, 1.0, 1.0])
 
-_COLOR_LABELS  = ("sun", "radius", "wireframe")
+_COLOR_LABELS  = ("off", "radius", "sun")
 # Symbol styles: (label, ramp_string).  Brightness t∈[0,1] indexes the ramp.
 _SYMBOL_STYLES: tuple = (
     ("block",   "\u2591\u2592\u2593\u2588"),   # ░▒▓█  — block shading
@@ -46,6 +46,8 @@ _SUN_BRIGHTNESS   = float(np.dot(_SUN_POS - _SUN_REF, _SUN_POS - _SUN_REF))
 _SUN_AMBIENT      = 0.12   # base illumination on all surfaces, including shadowed ones
 _SUN_MAX          = 0.72   # cap on sun brightness (prevents over-saturation at peak)
 _DIM_LEVEL        = 0.45   # default brightness when flashlight is off
+
+_HUD_ROWS = 2  # number of rows reserved at screen bottom for HUD
 
 
 def _addstr(scr, r: int, c: int, text: str, attr: int = 0) -> None:
@@ -170,7 +172,7 @@ def _draw_line(
     rows, cols = scr.getmaxyx()
 
     def put(r: int, c: int) -> None:
-        if 0 <= r < rows - 1 and 0 <= c < cols - 1:
+        if 0 <= r < rows - _HUD_ROWS and 0 <= c < cols - 1:
             _addstr(scr, r, c, ch, attr)
 
     dr, dc = abs(r1 - r0), abs(c1 - c0)
@@ -264,7 +266,7 @@ def _fill_triangle(
     def _il(a: float, b: float, ra: int, rb: int, r: int) -> float:
         return a if ra == rb else a + (b - a) * (r - ra) / (rb - ra)
 
-    for r in range(max(0, r0), min(rows - 1, r2 + 1)):
+    for r in range(max(0, r0), min(rows - _HUD_ROWS, r2 + 1)):
         if r <= r1:
             cl = _il(c0, c1, r0, r1, r);  cr = _il(c0, c2, r0, r2, r)
             vl = _il(vv[0], vv[1], r0, r1, r) if vv else None
@@ -418,7 +420,7 @@ def _fill_sph_triangle(
     # boxes fail for large triangles (especially those with back-hemisphere
     # vertices) because the arc projections don't bound the front-hemisphere
     # fill region.  The on_sphere + inside tests below handle all clipping.
-    rmin, rmax = 0, rows - 2
+    rmin, rmax = 0, rows - _HUD_ROWS - 1
     cmin, cmax = 0, cols - 2
 
     # Project each edge normal onto the tangent-plane basis + p once.
@@ -539,7 +541,7 @@ class Renderer:
         allow_deletion : bool, optional
             Whether deletion mode is active.
         color_mode : int, optional
-            Fill mode — 0 sun, 1 radius, 2 wireframe.
+            Fill mode — 0 wireframe, 1 radius, 2 sun.
         view_scale : float, optional
             Projection scale multiplier.
         flip_status : dict or None, optional
@@ -573,7 +575,7 @@ class Renderer:
         if sphere_mode:
             # Fit the equator (max projected distance = 1.0) to within
             # 2 rows of the screen edge, leaving a small margin.
-            scale = float(max(1, rows // 2 - 2))
+            scale = float(max(1, rows // 2 - _HUD_ROWS - 1))
 
         p        = player_pos
         e1       = player_heading
@@ -768,7 +770,7 @@ class Renderer:
                         break
                 _fl_occluded[_ct0] = not _ok
 
-        if color_mode == 0:  # sun
+        if color_mode == 2:  # sun
             # Rotate the sun position around the z-axis by sun_angle.
             _sc, _ss = float(np.cos(sun_angle)), float(np.sin(sun_angle))
             _sun_pos_cur = np.array([
@@ -856,7 +858,7 @@ class Renderer:
                 pair = _RADIUS_PAIR_START + round(t * (_n_r - 1))
                 return _sym_char(t), curses.color_pair(pair) | curses.A_BOLD
 
-        elif color_mode == 0:  # sun
+        elif color_mode == 2:  # sun
             _sun_factor_ref = [1.0]
             def _shade_fn(  # type: ignore[misc]
                 pos: np.ndarray, normal: np.ndarray,
@@ -884,30 +886,24 @@ class Renderer:
             _shade_fn = None  # type: ignore[assignment]
 
         if sphere_mode:
-            # Sphere visibility.  Two separate sets:
-            #
-            #   sphere_front_edge: centroid dot view_dir > 0.  Used for edges.
-            #     An edge is drawn if it belongs to any cone in this set AND
-            #     at least one of its two vertices is in the front hemisphere
-            #     (avoids drawing edges where both endpoints are behind the equator
-            #     even though the triangle centroid is just barely front-facing).
-            #
-            #   sphere_front_fill: any vertex dot view_dir > 0.  Used for fills.
-            #     More inclusive so triangles near the equator whose centroid is
-            #     slightly behind still have their visible area filled.
+            # Sphere visibility: include a cone if any vertex is in the front
+            # hemisphere (dot > 0).  Both sets use the same condition; the per-edge
+            # check below (`both endpoints behind`) prevents drawing fully invisible
+            # arcs.  A centroid check (sum of dots > 0) was previously used for
+            # sphere_front_edge, but it excluded equator-straddling cones whose
+            # edges are still partially visible — causing many edges to disappear.
             sphere_front_edge: set[tuple[int, ...]] = set()
             sphere_front_fill: set[tuple[int, ...]] = set()
             for ct in all_cones_list:
                 vs   = [ray(l) for l in ct]
                 dots = [float(np.dot(v, view_dir)) for v in vs]
-                if dots[0] + dots[1] + dots[2] > 0:
-                    sphere_front_edge.add(ct)
                 if any(d > 0 for d in dots):
+                    sphere_front_edge.add(ct)
                     sphere_front_fill.add(ct)
 
-            # Fill pass (color_mode != 2): back-to-front, correct arc-bounded
+            # Fill pass (color_mode != 0): back-to-front, correct arc-bounded
             # geometry via back-projection.
-            if color_mode != 2:
+            if color_mode != 0:
                 _sorted_sph = sorted(
                     sphere_front_fill,
                     key=lambda ct: float(
@@ -973,7 +969,7 @@ class Renderer:
                 else:
                     _brt_ref[0] = _DIM_LEVEL
                 if _shade_fn is not None:
-                    if color_mode == 0 and _sun_factor_ref is not None:
+                    if color_mode == 2 and _sun_factor_ref is not None:
                         _sun_factor_ref[0] = _sun_factor.get(ct, 0.0)
                     _fill_triangle(
                         scr, pts, "\u2592", 0,  # type: ignore[arg-type]
@@ -1007,7 +1003,7 @@ class Renderer:
             attr = curses.color_pair(3) | curses.A_BOLD
             for dr, s in ((-1, "^^"), (0, "||")):
                 r, c = row + dr, col
-                if 0 <= r < rows - 1 and 0 <= c + 1 < cols - 1:
+                if 0 <= r < rows - _HUD_ROWS and 0 <= c + 1 < cols - 1:
                     _addstr(scr, r, c, s, attr)
 
 
@@ -1021,70 +1017,103 @@ class Renderer:
             for _ii, _il in enumerate(_ireg_lines):
                 _ir = _ii
                 _ic = 0
-                if 0 <= _ir < rows - 1:
+                if 0 <= _ir < rows - _HUD_ROWS:
                     _addstr(scr, _ir, _ic, _il[: cols - 1 - _ic], _ireg_attr)
 
-        facet_str = str(pointed_facet) if pointed_facet else "none"
-        hud_base = (
-            f" pos=({p[0]:+.2f},{p[1]:+.2f},{p[2]:+.2f})"
-            f"  dir=({e1_new[0]:+.2f},{e1_new[1]:+.2f},{e1_new[2]:+.2f})"
-            f"  cone={current_cone}"
-            f"  facet={facet_str}"
-            f"  "
-        )
-        tail      = "[q]uit"
-        agt_str   = "  [A]gent:ON" if agent_active else "  [A]gent:off"
-        agt_attr  = (curses.color_pair(2) | curses.A_BOLD
-                     if agent_active else curses.color_pair(4))
-        sph_str   = "  [S]ph:ON" if sphere_mode else "  [S]ph:off"
-        sph_attr  = (curses.color_pair(2) | curses.A_BOLD
-                     if sphere_mode else curses.color_pair(4))
-        del_str   = "  [D]el:ON" if allow_deletion else "  [D]el:off"
-        del_attr  = (curses.color_pair(2) | curses.A_BOLD
-                     if allow_deletion else curses.color_pair(4))
-        lock_str  = "  [F]ix:ON" if locked else "  [F]ix:off"
-        lock_attr = (curses.color_pair(2) | curses.A_BOLD
-                     if locked else curses.color_pair(4))
-        col_str   = f"  [C]:{_COLOR_LABELS[color_mode]}"
-        sym_str   = f"  [Y]:{_SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][0]}"
-        lit_str   = "  [L]ight:ON" if flashlight else "  [L]ight:off"
-        lit_attr  = (curses.color_pair(2) | curses.A_BOLD
-                     if flashlight else curses.color_pair(4))
-        col = 0
+        facet_str  = str(pointed_facet) if pointed_facet else "none"
+        tail       = "[q]uit"
+        cone_str   = f"  cone={current_cone}"
+        facet_row1 = f"  facet={facet_str}"
+        agt_str    = "  [W]agent:ON" if agent_active else "  [W]agent:off"
+        agt_attr   = (curses.color_pair(2) | curses.A_BOLD
+                      if agent_active else curses.color_pair(4))
+        sph_str    = "  [A]sphere:ON" if sphere_mode else "  [A]sphere:off"
+        sph_attr   = (curses.color_pair(2) | curses.A_BOLD
+                      if sphere_mode else curses.color_pair(4))
+        del_str    = "  [D]del:ON" if allow_deletion else "  [D]del:off"
+        del_attr   = (curses.color_pair(2) | curses.A_BOLD
+                      if allow_deletion else curses.color_pair(4))
+        lock_str   = "  [C]fix:ON" if locked else "  [C]fix:off"
+        lock_attr  = (curses.color_pair(2) | curses.A_BOLD
+                      if locked else curses.color_pair(4))
+        col_str    = f"  [S]fill:{_COLOR_LABELS[color_mode]}"
+        sym_str    = f"  [Z]sym:{_SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][0]}"
+        lit_str    = "  [X]light:ON" if flashlight else "  [X]light:off"
+        lit_attr   = (curses.color_pair(2) | curses.A_BOLD
+                      if flashlight else curses.color_pair(4))
+        # ── HUD row 0 (rows-2): [q]uit  cone=…  [A]sphere  [S]:color  [D]el  [W]agent  [F]dbg
+        # ── HUD row 1 (rows-1):          facet=…  [Z]:symbol  [X]ight   [C]ix
+        #
+        # Stacked key columns match physical keyboard columns (Q-A-Z, W-S-X, E-D-C).
+        # cone/facet are stacked; [Z]/[X]/[C] align under [A]/[S]/[D] respectively.
         try:
-            scr.addstr(rows - 1, col,
-                       hud_base[: cols - 1], curses.color_pair(4))
-            col += len(hud_base)
+            # Clear HUD rows so the irregular-fan red background doesn't bleed in.
+            _blank = " " * (cols - 1)
+            for _hr in range(_HUD_ROWS):
+                scr.addstr(rows - _HUD_ROWS + _hr, 0, _blank, curses.color_pair(4))
+
+            # --- row 0 ---
+            col = 0
+            r0  = rows - _HUD_ROWS
+
+            scr.addstr(r0, col, tail[: cols - 1], curses.color_pair(4))
+            col += len(tail)
+
+            # Column widths are max(row-0 item, row-1 item) so neither row clips.
+            _cone_w = max(len(cone_str), len(facet_row1))
+            _sph_w  = max(len(sph_str),  len(sym_str))
+            _col_w  = max(len(col_str),  len(lit_str))
+            _del_w  = max(len(del_str),  len(lock_str))
+
+            cone_col = col
             if col < cols - 1:
-                scr.addstr(rows - 1, col,
-                           tail[: cols - 1 - col], curses.color_pair(4))
-                col += len(tail)
+                scr.addstr(r0, col, cone_str[: cols - 1 - col], curses.color_pair(4))
+                col += _cone_w
+
+            sph_col = col
             if col < cols - 1:
-                scr.addstr(rows - 1, col, agt_str[: cols - 1 - col], agt_attr)
+                scr.addstr(r0, col, sph_str[: cols - 1 - col], sph_attr)
+                col += _sph_w
+
+            col_col = col
+            if col < cols - 1:
+                scr.addstr(r0, col, col_str[: cols - 1 - col], curses.color_pair(4))
+                col += _col_w
+
+            del_col = col
+            if col < cols - 1:
+                scr.addstr(r0, col, del_str[: cols - 1 - col], del_attr)
+                col += _del_w
+
+            if col < cols - 1:
+                scr.addstr(r0, col, agt_str[: cols - 1 - col], agt_attr)
                 col += len(agt_str)
+
             if col < cols - 1:
-                scr.addstr(rows - 1, col, sph_str[: cols - 1 - col], sph_attr)
-                col += len(sph_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col, del_str[: cols - 1 - col], del_attr)
-                col += len(del_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col,
-                           lock_str[: cols - 1 - col], lock_attr)
-                col += len(lock_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col,
-                           col_str[: cols - 1 - col], curses.color_pair(4))
-                col += len(col_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col,
-                           sym_str[: cols - 1 - col], curses.color_pair(4))
-                col += len(sym_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col, lit_str[: cols - 1 - col], lit_attr)
-                col += len(lit_str)
-            if col < cols - 1:
-                scr.addstr(rows - 1, col, "  [Z]dbg"[: cols - 1 - col],
+                scr.addstr(r0, col, "  [F]dbg"[: cols - 1 - col],
                            curses.color_pair(4))
+
+            # --- row 1 ---
+            r1 = rows - 1
+
+            # facet aligns under cone
+            # Each row-1 item is truncated to its column span (next col − current col)
+            # to prevent overlap when the label is wider than the row-0 counterpart.
+            if cone_col < cols - 1:
+                scr.addstr(r1, cone_col,
+                           facet_row1[: sph_col - cone_col], curses.color_pair(4))
+
+            if sph_col < cols - 1:
+                scr.addstr(r1, sph_col,
+                           sym_str[: col_col - sph_col], curses.color_pair(4))
+
+            if col_col < cols - 1:
+                scr.addstr(r1, col_col,
+                           lit_str[: del_col - col_col], lit_attr)
+
+            if del_col < cols - 1:
+                scr.addstr(r1, del_col,
+                           lock_str[: cols - 1 - del_col], lock_attr)
+
         except curses.error:
             pass

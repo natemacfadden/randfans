@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import curses
 import math
+import os
+import sys
 import time
 import threading
 from typing import TYPE_CHECKING
@@ -28,6 +30,7 @@ from renderer.renderer import (
     _M3_THETA_MAX,
     _COLOR_LABELS,
     _SYMBOL_STYLES,
+    _HUD_ROWS,
     _ray_intersects_triangle,
 )
 
@@ -41,12 +44,10 @@ def _flashlight_debug_dump(
     fan,
     stdscr: "_CursesWindow",
     view_scale: float,
-    path: str = "/tmp/fl_debug.txt",
-) -> str:
-    """Compute and write flashlight geometry debug info to *path*.
-
-    Returns the path written to.
-    """
+    vectors: list | None = None,
+    cli_cmd: str = "",
+) -> list[str]:
+    """Compute and return flashlight geometry debug info as a list of lines."""
     p      = np.asarray(player.direction, float)   # unit direction (geometry)
     p_cart = np.asarray(player.cartesian,  float)  # actual 3D position
     e1     = np.asarray(player.heading,    float)
@@ -150,6 +151,10 @@ def _flashlight_debug_dump(
     L.append("=" * 70)
     L.append("FLASHLIGHT DEBUG DUMP")
     L.append("=" * 70)
+    if cli_cmd:
+        L.append(f"cli     : {cli_cmd}")
+    if vectors is not None:
+        L.append(f"vectors : {vectors}")
     L.append(f"pos_3d  : ({p_cart[0]:+.4f}, {p_cart[1]:+.4f}, {p_cart[2]:+.4f})"
              f"  r={float(np.linalg.norm(p_cart)):.4f}")
     L.append(f"sph     : az={az_deg:+.2f}°  el={el_deg:+.2f}°")
@@ -205,9 +210,7 @@ def _flashlight_debug_dump(
             f"  {'Y' if occluded else 'n':>3}  {'Y' if in_hemi else 'n':>4}  {note}"
         )
 
-    with open(path, "w") as fh:
-        fh.write("\n".join(L) + "\n")
-    return path
+    return L
 
 
 def run_display_demo(
@@ -219,6 +222,8 @@ def run_display_demo(
     initial_heading: np.ndarray | None = None,
     initial_color: int = 0,
     initial_flashlight: bool = False,
+    vectors: list | None = None,
+    cli_cmd: str = "",
 ) -> None:
     """Launch a curses demo: render the fan with a player; quit on 'q'.
 
@@ -239,7 +244,7 @@ def run_display_demo(
     initial_heading : np.ndarray or None, optional
         Starting heading 3-vector.
     initial_color : int, optional
-        Color mode at startup — 0 sun, 1 radius, 2 wireframe.
+        Color mode at startup — 0 wireframe, 1 radius, 2 sun.
     initial_flashlight : bool, optional
         Start with the flashlight on.
     """
@@ -389,6 +394,7 @@ def run_display_demo(
 
         _agent_rate = 1.0   # steps per frame (can be fractional)
         _agent_acc  = 0.0   # fractional accumulator
+        _debug_on   = False  # whether debug overlay is visible
 
         try:
             while True:
@@ -421,6 +427,23 @@ def run_display_demo(
                               flashlight=flashlight_on,
                               symbol_mode=symbol_mode)
                 _sun_angle += _SUN_ROT_RATE
+
+                if _debug_on:
+                    _dbg_lines = _flashlight_debug_dump(
+                        player, nonlocal_fan[0], stdscr, _view_scale,
+                        vectors=vectors, cli_cmd=cli_cmd,
+                    )
+                    _dbg_rows, _dbg_cols = stdscr.getmaxyx()
+                    _dbg_attr = curses.A_REVERSE
+                    for _di, _dl in enumerate(_dbg_lines):
+                        if _di >= _dbg_rows - _HUD_ROWS:
+                            break
+                        _txt = _dl[: _dbg_cols - 1].ljust(_dbg_cols - 1)
+                        try:
+                            stdscr.addstr(_di, 0, _txt, _dbg_attr)
+                        except curses.error:
+                            pass
+
                 stdscr.refresh()
 
                 # Drain ALL pending input this frame so terminal key-repeat
@@ -439,31 +462,26 @@ def run_display_demo(
                         _quit = True
                     elif key == ord("p"):
                         _pending_prints.append(_snapshot(nonlocal_fan[0]))
-                    elif key == ord("a"):
+                    elif key == ord("w"):
                         agent_active = not agent_active
-                    elif key == ord("s"):
+                    elif key == ord("a"):
                         sphere_mode = not sphere_mode
                     elif key == ord("d"):
                         allow_deletion = not allow_deletion
-                    elif key == ord("f"):
-                        locked = not locked
                     elif key == ord("c"):
+                        locked = not locked
+                    elif key == ord("s"):
                         color_mode = (
                             (color_mode + 1) % len(_COLOR_LABELS)
                         )
-                    elif key == ord("y"):
+                    elif key == ord("z"):
                         symbol_mode = (
                             (symbol_mode + 1) % len(_SYMBOL_STYLES)
                         )
-                    elif key == ord("l"):
+                    elif key == ord("x"):
                         flashlight_on = not flashlight_on
-                    elif key == ord("z"):
-                        _p = _flashlight_debug_dump(
-                            player, nonlocal_fan[0], stdscr, _view_scale,
-                        )
-                        _pending_prints.append(
-                            f"[flashlight debug → {_p}]"
-                        )
+                    elif key == ord("f"):
+                        _debug_on = not _debug_on
                 if _quit:
                     break
 
@@ -523,7 +541,20 @@ def run_display_demo(
             if _kb_listener is not None:
                 _kb_listener.stop()
 
-    curses.wrapper(_main)
+    # Redirect fd 2 to /dev/null for the entire curses session so that
+    # C-level stderr output (e.g. macOS pynput accessibility warning)
+    # does not bleed into the display.
+    _stderr_fd   = sys.stderr.fileno()
+    _saved_fd    = os.dup(_stderr_fd)
+    _devnull_fd  = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(_devnull_fd, _stderr_fd)
+    os.close(_devnull_fd)
+    try:
+        curses.wrapper(_main)
+    finally:
+        os.dup2(_saved_fd, _stderr_fd)
+        os.close(_saved_fd)
+
     for i, s in enumerate(_pending_prints):
         if len(_pending_prints) > 1:
             print(f"\n--- snapshot {i + 1} of {len(_pending_prints)} ---")

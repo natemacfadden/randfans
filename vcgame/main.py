@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 
 import numpy as np
@@ -10,14 +11,25 @@ import numpy as np
 from game import run_display_demo
 
 
-def _parse_vec_arg(s: str) -> np.ndarray:
-    """Parse a comma-separated string like '1.0,2.0,3.0' into a float array."""
-    return np.array([float(x) for x in s.split(",")], dtype=float)
+def _parse_sph_arg(s: str) -> np.ndarray:
+    """Parse 'az,el' (degrees) into a unit Cartesian vector."""
+    parts = s.split(",")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError(
+            f"expected 'az,el' in degrees, got {s!r}"
+        )
+    az = math.radians(float(parts[0]))
+    el = math.radians(float(parts[1]))
+    return np.array([
+        math.cos(el) * math.cos(az),
+        math.cos(el) * math.sin(az),
+        math.sin(el),
+    ], dtype=float)
 
 
 def _fix_negative_args() -> None:
     """Join --pos/--heading with their value using '=' so argparse doesn't
-    mistake a leading '-' in the value for a flag.
+    mistake a leading '-' in a negative angle for a flag.
     """
     _vec_flags = {"--pos", "--heading"}
     argv = sys.argv
@@ -37,25 +49,6 @@ def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     p = argparse.ArgumentParser(
         prog="vcgame",
         description="Navigate a simplicial fan on S².",
-    )
-    p.add_argument(
-        "--levy",
-        action="store_true",
-        help="Let a Lévy-walk agent navigate.",
-    )
-    p.add_argument(
-        "--alpha",
-        type=float,
-        default=1.5,
-        metavar="α",
-        help="Lévy exponent for the agent (default: 1.5).",
-    )
-    p.add_argument(
-        "--step",
-        type=float,
-        default=0.04,
-        metavar="s",
-        help="Agent step size in radians (default: 0.04).",
     )
     p.add_argument(
         "--shape",
@@ -92,36 +85,18 @@ def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         help="Reflexive polytope id 0–4318 for --shape reflexive (default: 0).",
     )
     p.add_argument(
-        "-d",
-        action="store_true",
-        dest="deletion",
-        help="Enable deletion mode at startup (default: off).",
-    )
-    p.add_argument(
         "--pos",
         type=str,
         default=None,
-        metavar="x,y,z",
-        help="Initial player position as 'x,y,z' (direction, will be normalised).",
+        metavar="az,el",
+        help="Initial player position as azimuth,elevation in degrees.",
     )
     p.add_argument(
         "--heading",
         type=str,
         default=None,
-        metavar="x,y,z",
-        help="Initial player heading as 'x,y,z'.",
-    )
-    p.add_argument(
-        "--color",
-        type=int,
-        default=0,
-        metavar="N",
-        help="Initial color mode: 0=sun, 1=radius, 2=wireframe (default: 0).",
-    )
-    p.add_argument(
-        "--flashlight",
-        action="store_true",
-        help="Start with flashlight on.",
+        metavar="az,el",
+        help="Initial player heading as azimuth,elevation in degrees.",
     )
     return p, p.parse_args()
 
@@ -150,26 +125,20 @@ def main() -> None:
     vc  = VectorConfiguration(vectors)
     fan = vc.triangulate()
 
-    initial_pos       = _parse_vec_arg(args.pos)     if args.pos     else None
-    initial_heading   = _parse_vec_arg(args.heading) if args.heading else None
+    # Reconstruct the effective CLI for debug dumps.
+    import sys as _sys
+    cli_cmd = " ".join(_sys.argv)
 
-    agent = None
-    if args.levy:
-        from game.agents.random_agent import RandomAgent
-        from game.player import Player
-        pos0 = initial_pos   if initial_pos   is not None else [1.0, 0.2, 0.1]
-        hdg0 = initial_heading if initial_heading is not None else [0.0, 1.0, 0.0]
-        player = Player(pos0, hdg0)
-        agent  = RandomAgent(player, alpha=args.alpha, step=args.step)
+    initial_pos     = _parse_sph_arg(args.pos)     if args.pos     else None
+    initial_heading = _parse_sph_arg(args.heading) if args.heading else None
 
     run_display_demo(
         fan, vc,
-        agent=agent,
-        allow_deletion=args.deletion,
+        agent=None,
         initial_pos=initial_pos,
         initial_heading=initial_heading,
-        initial_color=args.color,
-        initial_flashlight=args.flashlight,
+        vectors=vectors,
+        cli_cmd=cli_cmd,
     )
 
 
