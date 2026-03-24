@@ -87,6 +87,11 @@ class RandomAgent:
         return self._player
 
     @property
+    def alpha(self) -> float:
+        """**Description:** Pareto exponent for arc-length distribution."""
+        return self._alpha
+
+    @property
     def step(self) -> float:
         """**Description:** Arc length advanced per call to `advance`."""
         return self._step

@@ -28,7 +28,6 @@ _RADIUS_PAIR_START = 6
 _EDGE_PAIR_BASE    = 40   # pairs 40-43: front-flip, front-noflip, other-flip, other-noflip
 _IREG_BG_PAIR      = 50   # pair for irregular-fan background tint
 _FILL_PAIR         = 51   # dim fill for visible surface patches
-_FL_PAIR           = 52   # flashlight-illuminated pixels (red debug)
 
 # (r, g, b) in 0–1000 range for curses
 _VIRIDIS_KEYS: list[tuple[int, int, int]] = [
@@ -226,8 +225,8 @@ def _fill_triangle(
             cl, cr = cr, cl
             if vl is not None:
                 vl, vr = vr, vl
-        left  = int(round(min(cl, cr)))
-        right = int(round(max(cl, cr)))
+        left  = int(round(cl))
+        right = int(round(cr))
         for c in range(max(0, left), min(cols - 1, right + 1)):
             if shade_fn is not None and face_normal is not None and vl is not None:
                 tc    = (c - left) / (right - left) if right > left else 0.0
@@ -270,28 +269,6 @@ _SUN_BRIGHTNESS   = float(np.dot(_SUN_POS - np.array([1.0, 1.0, 1.0]),
 _SUN_AMBIENT      = 0.12   # base illumination on all surfaces, including shadowed ones
 _SUN_MAX          = 0.72   # cap on sun brightness (prevents over-saturation at peak)
 _DIM_LEVEL        = 0.45   # default brightness when flashlight is off
-
-
-def flashlight_cone_intensity(
-    pos: np.ndarray,
-    p_src: np.ndarray,
-    h_proj: np.ndarray,
-    cos_tmax: float,
-) -> float:
-    """Per-pixel flashlight intensity in [0, 1].
-
-    Returns 0 if `pos` is outside the cone (angle to axis > _M3_THETA_MAX),
-    otherwise a smooth value based on how close to the cone axis `pos` is.
-    This must be called per-pixel, not per-face.
-    """
-    dv = pos - p_src
-    dn = float(np.linalg.norm(dv))
-    if dn < 1e-12:
-        return 0.0
-    cos_a = float(np.dot(dv / dn, h_proj))
-    if cos_a <= cos_tmax:
-        return 0.0
-    return (cos_a - cos_tmax) / (1.0 - cos_tmax)
 
 
 def _ray_intersects_triangle(
@@ -383,9 +360,15 @@ def _fill_sph_triangle(
 
     # Project each edge normal onto the tangent-plane basis + p once.
     # dot(n, direction) = n_e2*tx + n_e1*ty + n_p*sqrt(1-mag2)
-    nAB_e2, nAB_e1, nAB_p = float(np.dot(nAB, e2)), float(np.dot(nAB, e1)), float(np.dot(nAB, p))
-    nBC_e2, nBC_e1, nBC_p = float(np.dot(nBC, e2)), float(np.dot(nBC, e1)), float(np.dot(nBC, p))
-    nCA_e2, nCA_e1, nCA_p = float(np.dot(nCA, e2)), float(np.dot(nCA, e1)), float(np.dot(nCA, p))
+    nAB_e2 = float(np.dot(nAB, e2))
+    nAB_e1 = float(np.dot(nAB, e1))
+    nAB_p  = float(np.dot(nAB, p))
+    nBC_e2 = float(np.dot(nBC, e2))
+    nBC_e1 = float(np.dot(nBC, e1))
+    nBC_p  = float(np.dot(nBC, p))
+    nCA_e2 = float(np.dot(nCA, e2))
+    nCA_e1 = float(np.dot(nCA, e1))
+    nCA_p  = float(np.dot(nCA, p))
 
     sc2 = scale * 2.0
     c_arr = np.arange(cmin, cmax + 1)
@@ -438,73 +421,6 @@ def _fill_sph_triangle(
                     pass
 
 
-def _fill_triangle_colored(
-    scr: _CursesWindow,
-    pts: list[tuple[int, int]],
-    v3d: list[np.ndarray],
-    color_fn: object,
-    n_pairs: int,
-    pair_start: int,
-) -> None:
-    """
-    **Description:**
-    Fill a triangle, mapping each pixel's true interpolated 3D position
-    through `color_fn` to a Viridis palette index.  The 3D vector at each
-    pixel is computed by bilinear interpolation of the corner vectors so
-    that, e.g., the radius coloring reflects the actual norm of the
-    interpolated point—not a linear blend of corner norms.
-
-    **Arguments:**
-    - `scr`: Curses window.
-    - `pts`: Three `(row, col)` screen points.
-    - `v3d`: Three 3D float vectors corresponding to `pts`.
-    - `color_fn`: `(np.ndarray) -> float` mapping an interpolated 3D
-      vector to a value in [0, 1].
-    - `n_pairs`: Number of colour pairs available.
-    - `pair_start`: First colour-pair index.
-
-    **Returns:**
-    Nothing.
-    """
-    rows, cols = scr.getmaxyx()
-    order = sorted(range(3), key=lambda i: pts[i][0])
-    (r0, c0), (r1, c1), (r2, c2) = [pts[o] for o in order]
-    vv0 = np.asarray(v3d[order[0]], dtype=float)
-    vv1 = np.asarray(v3d[order[1]], dtype=float)
-    vv2 = np.asarray(v3d[order[2]], dtype=float)
-
-    if r0 == r2:
-        return
-
-    def _l(a, b, ra: int, rb: int, r: int):  # type: ignore[no-untyped-def]
-        return a if ra == rb else a + (b - a) * (r - ra) / (rb - ra)
-
-    for r in range(max(0, r0), min(rows - 1, r2 + 1)):
-        if r <= r1:
-            cl = _l(c0,  c1,  r0, r1, r)
-            cr = _l(c0,  c2,  r0, r2, r)
-            vl = _l(vv0, vv1, r0, r1, r)
-            vr = _l(vv0, vv2, r0, r2, r)
-        else:
-            cl = _l(c1,  c2,  r1, r2, r)
-            cr = _l(c0,  c2,  r0, r2, r)
-            vl = _l(vv1, vv2, r1, r2, r)
-            vr = _l(vv0, vv2, r0, r2, r)
-        if cl > cr:
-            cl, cr, vl, vr = cr, cl, vr, vl
-        left, right = int(round(cl)), int(round(cr))
-        for c in range(max(0, left), min(cols - 1, right + 1)):
-            tc       = (c - left) / (right - left) if right > left else 0.0
-            v_interp = vl + tc * (vr - vl)
-            t        = max(0.0, min(1.0, color_fn(v_interp)))  # type: ignore
-            pair     = pair_start + round(t * (n_pairs - 1))
-            try:
-                attr = curses.color_pair(pair) | curses.A_BOLD
-                scr.addstr(r, c, "\u2592", attr)
-            except curses.error:
-                pass
-
-
 class Renderer:
     """
     **Description:**
@@ -528,9 +444,11 @@ class Renderer:
         **Returns:**
         Nothing.
         """
-        self._fan      = fan
-        self._stdscr   = stdscr
-        self._edge_map = _cone_edge_map(fan)
+        self._fan        = fan
+        self._stdscr     = stdscr
+        self._edge_map   = _cone_edge_map(fan)
+        self._depth_buf  = None
+        self._depth_shape = (0, 0)
         self._init_colors()
 
     def _init_colors(self) -> None:
@@ -576,7 +494,6 @@ class Renderer:
                 curses.init_pair(_FILL_PAIR, _cb + 5, -1)
             else:
                 curses.init_pair(_FILL_PAIR, curses.COLOR_BLUE, -1)
-            curses.init_pair(_FL_PAIR, curses.COLOR_RED, -1)
         else:
             for i, fg in enumerate([curses.COLOR_BLUE, curses.COLOR_CYAN,
                                      curses.COLOR_GREEN, curses.COLOR_YELLOW,
@@ -589,7 +506,6 @@ class Renderer:
             curses.init_pair(_EDGE_PAIR_BASE + 3, curses.COLOR_RED,   -1)
             curses.init_pair(_IREG_BG_PAIR, -1, curses.COLOR_RED)
             curses.init_pair(_FILL_PAIR, curses.COLOR_BLUE, -1)
-            curses.init_pair(_FL_PAIR, curses.COLOR_RED, -1)
 
     def draw(
         self,
@@ -633,7 +549,12 @@ class Renderer:
         scr.bkgd(' ', curses.color_pair(_IREG_BG_PAIR) if is_irregular else 0)
         scr.erase()
         rows, cols = scr.getmaxyx()
-        depth_buf  = np.full((rows, cols), -np.inf)
+        if self._depth_shape != (rows, cols):
+            self._depth_buf   = np.full((rows, cols), -np.inf)
+            self._depth_shape = (rows, cols)
+        else:
+            self._depth_buf.fill(-np.inf)
+        depth_buf = self._depth_buf
         cy, cx = rows // 2, cols // 2
         scale  = float(min(rows, cols // 2) // 2 - 2) * 0.75 * view_scale
         if sphere_mode:
@@ -792,11 +713,6 @@ class Renderer:
             _h_face_norm = float(np.linalg.norm(_h_face_raw))
             _h_proj = _h_face_raw / _h_face_norm if _h_face_norm > 1e-12 else e1_new
 
-            # 2D beam axis: always straight up on screen (heading direction).
-            # The hemisphere gate handles geometric correctness.
-            _h_scr_y, _h_scr_x, _h_scr_len = 1.0, 0.0, 1.0
-
-
             # Build per-face data (vertices, centroid, outward normal).
             _m3_faces: dict = {}
             for _ct0 in sorted_front:
@@ -814,8 +730,7 @@ class Renderer:
             # _curr_ct is excluded from occlusion checks — it is the face the
             # player stands on and its plane always intersects forward rays.
             # Per-face occlusion gate: 1 if face is reachable from _p_src,
-            # 0 if blocked.  Cone clipping is done per-pixel in the shade_fn
-            # via flashlight_cone_intensity().
+            # 0 if blocked.  Cone clipping is done per-pixel in the shade_fn.
             _EPS = 1e-3
             _fl_occluded: dict = {}
             for _ct0, (_vv0, _c0, _nf0) in _m3_faces.items():
@@ -890,9 +805,6 @@ class Renderer:
                 _sun_factor[_ct0] = _face_dot if _ok else 0.0
 
         # Build a per-pixel shade function.
-        # When flashlight is on, flashlight_cone_intensity() is called per-pixel
-        # to get the cone brightness for that exact position.  This correctly
-        # clips the cone boundary within faces.
         _n_r    = self._n_radius
         _brt_ref: list = [_DIM_LEVEL]        # still used for per-face occlusion gate
         _sun_factor_ref: list | None = None
@@ -1195,9 +1107,6 @@ class Renderer:
         except curses.error:
             pass
 
-        # ------------------------------------------------------------------ WIP
-        # -------------------------------------------------------------------
-
 
 def _flashlight_debug_dump(
     player,
@@ -1267,9 +1176,6 @@ def _flashlight_debug_dump(
 
     # 2D beam axis: straight up on screen (matches draw logic — heading direction)
     h_scr_y, h_scr_x, h_scr_len = 1.0, 0.0, 1.0
-    # (h_proj projection kept below for informational purposes only)
-    _h_scr_y_info = float(np.dot(h_proj, e1_new))
-    _h_scr_x_info = float(np.dot(h_proj, e2_new))
 
     # ---- spherical coords ---------------------------------------------------
     r_xy   = math.sqrt(float(p[0])**2 + float(p[1])**2)
@@ -1399,7 +1305,7 @@ def run_display_demo(
       disabled and the loop runs at ~20 fps.
     - `initial_pos`: Starting position 3-vector (normalized to direction).
     - `initial_heading`: Starting heading 3-vector.
-    - `initial_color`: Color mode at startup (0=none, 1=radius, 2=sun).
+    - `initial_color`: Color mode at startup (0=sun, 1=radius, 2=wireframe).
     - `initial_flashlight`: Start with flashlight on.
 
     **Returns:**
@@ -1552,117 +1458,138 @@ def run_display_demo(
         _agent_rate = 1.0   # steps per frame (can be fractional)
         _agent_acc  = 0.0   # fractional accumulator
 
-        while True:
-            if agent_active:
-                _agent_acc += _agent_rate
-                while _agent_acc >= 1.0:
-                    _agent_step()
-                    _agent_acc -= 1.0
-            f       = nonlocal_fan[0]
-            cone    = player.current_cone(f)
-            facet   = player.pointed_facet(f)
-            # Compute flippability for each edge of the current cone.
-            _flip_status: dict[tuple[int, int], bool] = {}
-            _cl = list(cone)
-            for _i in range(len(_cl)):
-                _ea = _cl[_i];  _eb = _cl[(_i + 1) % len(_cl)]
-                _ek = (min(_ea, _eb), max(_ea, _eb))
-                _adjs = renderer._edge_map.get(_ek, set()) - {cone}
-                _ok = False
-                for _adj in _adjs:
-                    _c = player.find_circuit_for_crossing(cone, _adj, f)
-                    if _c is not None and f.flip(_c) is not None:
-                        _ok = True
-                        break
-                _flip_status[_ek] = _ok
-            renderer.draw(player.direction, player.heading, cone,
-                          facet, locked, allow_deletion, color_mode,
-                          _view_scale, _flip_status, _irregularity[0],
-                          sphere_mode, agent_active, _sun_angle,
-                          flashlight=flashlight_on, symbol_mode=symbol_mode)
-            _sun_angle += _SUN_ROT_RATE
-            stdscr.refresh()
-
-            # Drain ALL pending input this frame so terminal key-repeat
-            # buffering cannot cause movement to continue after key release.
-            _move_keys: set[int] = set()
-            _MOVE_SET = {curses.KEY_UP, curses.KEY_DOWN,
-                         curses.KEY_LEFT, curses.KEY_RIGHT}
-            _quit = False
+        try:
             while True:
-                key = stdscr.getch()
-                if key == -1:
+                if agent_active:
+                    _agent_acc += _agent_rate
+                    while _agent_acc >= 1.0:
+                        _agent_step()
+                        _agent_acc -= 1.0
+                f       = nonlocal_fan[0]
+                cone    = player.current_cone(f)
+                facet   = player.pointed_facet(f)
+                # Compute flippability for each edge of the current cone.
+                _flip_status: dict[tuple[int, int], bool] = {}
+                _cl = list(cone)
+                for _i in range(len(_cl)):
+                    _ea = _cl[_i];  _eb = _cl[(_i + 1) % len(_cl)]
+                    _ek = (min(_ea, _eb), max(_ea, _eb))
+                    _adjs = renderer._edge_map.get(_ek, set()) - {cone}
+                    _ok = False
+                    for _adj in _adjs:
+                        _c = player.find_circuit_for_crossing(cone, _adj, f)
+                        if _c is not None and f.flip(_c) is not None:
+                            _ok = True
+                            break
+                    _flip_status[_ek] = _ok
+                renderer.draw(player.direction, player.heading, cone,
+                              facet, locked, allow_deletion, color_mode,
+                              _view_scale, _flip_status, _irregularity[0],
+                              sphere_mode, agent_active, _sun_angle,
+                              flashlight=flashlight_on,
+                              symbol_mode=symbol_mode)
+                _sun_angle += _SUN_ROT_RATE
+                stdscr.refresh()
+
+                # Drain ALL pending input this frame so terminal key-repeat
+                # buffering cannot cause movement to continue after key release.
+                _move_keys: set[int] = set()
+                _MOVE_SET = {curses.KEY_UP, curses.KEY_DOWN,
+                             curses.KEY_LEFT, curses.KEY_RIGHT}
+                _quit = False
+                while True:
+                    key = stdscr.getch()
+                    if key == -1:
+                        break
+                    if key in _MOVE_SET:
+                        _move_keys.add(key)
+                    elif key == ord("q"):
+                        _quit = True
+                    elif key == ord("p"):
+                        _pending_prints.append(_snapshot(nonlocal_fan[0]))
+                    elif key == ord("a"):
+                        agent_active = not agent_active
+                    elif key == ord("s"):
+                        sphere_mode = not sphere_mode
+                    elif key == ord("d"):
+                        allow_deletion = not allow_deletion
+                    elif key == ord("f"):
+                        locked = not locked
+                    elif key == ord("c"):
+                        color_mode = (
+                            (color_mode + 1) % len(_COLOR_LABELS)
+                        )
+                    elif key == ord("y"):
+                        symbol_mode = (
+                            (symbol_mode + 1) % len(_SYMBOL_STYLES)
+                        )
+                    elif key == ord("l"):
+                        flashlight_on = not flashlight_on
+                    elif key == ord("z"):
+                        _p = _flashlight_debug_dump(
+                            player, nonlocal_fan[0], stdscr, _view_scale,
+                        )
+                        _pending_prints.append(
+                            f"[flashlight debug → {_p}]"
+                        )
+                if _quit:
                     break
-                if key in _MOVE_SET:
-                    _move_keys.add(key)
-                elif key == ord("q"):
-                    _quit = True
-                elif key == ord("p"):  _pending_prints.append(_snapshot(nonlocal_fan[0]))
-                elif key == ord("a"):  agent_active = not agent_active
-                elif key == ord("s"):  sphere_mode = not sphere_mode
-                elif key == ord("d"):  allow_deletion = not allow_deletion
-                elif key == ord("f"):  locked = not locked
-                elif key == ord("c"):  color_mode = (color_mode + 1) % len(_COLOR_LABELS)
-                elif key == ord("y"):  symbol_mode = (symbol_mode + 1) % len(_SYMBOL_STYLES)
-                elif key == ord("l"):  flashlight_on = not flashlight_on
-                elif key == ord("z"):
-                    _p = _flashlight_debug_dump(player, nonlocal_fan[0], stdscr, _view_scale)
-                    _pending_prints.append(f"[flashlight debug → {_p}]")
-            if _quit:
-                break
 
-            # Determine which movement keys are currently active.
-            if _use_pynput:
-                with _lock:
-                    _active = _pressed.copy()
-            else:
-                _now = time.monotonic()
-                for _k in _move_keys:
-                    _last_seen[_k] = _now
-                _active = {_k for _k, _t in _last_seen.items()
-                           if _now - _t <= _KEY_TTL}
-
-            if not agent_active:
-                _fwd   = curses.KEY_UP    in _active
-                _back  = curses.KEY_DOWN  in _active
-                _left  = curses.KEY_LEFT  in _active
-                _right = curses.KEY_RIGHT in _active
-
-                if _fwd or _back:
-                    _try_move(_speed if _fwd else -_speed)
-                    _speed = min(MAX_SPEED, _speed + ACCEL)
+                # Determine which movement keys are currently active.
+                if _use_pynput:
+                    with _lock:
+                        _active = _pressed.copy()
                 else:
-                    _speed = max(MIN_SPEED, _speed * 0.85)
+                    _now = time.monotonic()
+                    for _k in _move_keys:
+                        _last_seen[_k] = _now
+                    _active = {_k for _k, _t in _last_seen.items()
+                               if _now - _t <= _KEY_TTL}
 
-                if _left or _right:
-                    _turn_rate = min(MAX_TURN, _turn_rate + TURN_ACCEL)
-                    if _left:
-                        player.turn(-_turn_rate)
+                if not agent_active:
+                    _fwd   = curses.KEY_UP    in _active
+                    _back  = curses.KEY_DOWN  in _active
+                    _left  = curses.KEY_LEFT  in _active
+                    _right = curses.KEY_RIGHT in _active
+
+                    if _fwd or _back:
+                        _try_move(_speed if _fwd else -_speed)
+                        _speed = min(MAX_SPEED, _speed + ACCEL)
                     else:
-                        player.turn(_turn_rate)
-                    if _turn_rate * _speed > LAT_ACCEL:
-                        _speed = max(MIN_SPEED, _speed * DECEL)
-                else:
-                    _turn_rate = TURN
+                        _speed = max(MIN_SPEED, _speed * 0.85)
 
-            elif agent_active:
-                _RATE_FACTOR = 1.5
-                _RATE_MIN    = 0.05
-                _RATE_MAX    = 8.0
-                _NUDGE       = 0.20
-                if   curses.KEY_UP    in _move_keys:
-                    _agent_rate = min(_RATE_MAX, _agent_rate * _RATE_FACTOR)
-                elif curses.KEY_DOWN  in _move_keys:
-                    _agent_rate = max(_RATE_MIN, _agent_rate / _RATE_FACTOR)
-                if   curses.KEY_LEFT  in _move_keys:
-                    _agent_obj.player.turn(-_NUDGE)
-                elif curses.KEY_RIGHT in _move_keys:
-                    _agent_obj.player.turn(_NUDGE)
+                    if _left or _right:
+                        _turn_rate = min(MAX_TURN, _turn_rate + TURN_ACCEL)
+                        if _left:
+                            player.turn(-_turn_rate)
+                        else:
+                            player.turn(_turn_rate)
+                        if _turn_rate * _speed > LAT_ACCEL:
+                            _speed = max(MIN_SPEED, _speed * DECEL)
+                    else:
+                        _turn_rate = TURN
 
-            time.sleep(_FRAME_DT)
+                elif agent_active:
+                    _RATE_FACTOR = 1.5
+                    _RATE_MIN    = 0.05
+                    _RATE_MAX    = 8.0
+                    _NUDGE       = 0.20
+                    if   curses.KEY_UP    in _move_keys:
+                        _agent_rate = min(_RATE_MAX,
+                                          _agent_rate * _RATE_FACTOR)
+                    elif curses.KEY_DOWN  in _move_keys:
+                        _agent_rate = max(_RATE_MIN,
+                                          _agent_rate / _RATE_FACTOR)
+                    if   curses.KEY_LEFT  in _move_keys:
+                        _agent_obj.player.turn(-_NUDGE)
+                    elif curses.KEY_RIGHT in _move_keys:
+                        _agent_obj.player.turn(_NUDGE)
 
-        if _kb_listener is not None:
-            _kb_listener.stop()
+                time.sleep(_FRAME_DT)
+
+        finally:
+            if _kb_listener is not None:
+                _kb_listener.stop()
 
     curses.wrapper(_main)
     for i, s in enumerate(_pending_prints):

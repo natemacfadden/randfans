@@ -75,7 +75,7 @@ class Player:
             raise ValueError(f"radius must be positive, got {radius}")
 
         p_norm = np.linalg.norm(position)
-        if p_norm == 0.0:
+        if p_norm < 1e-15:
             raise ValueError("position must be non-zero")
 
         p_unit = position / p_norm
@@ -86,7 +86,7 @@ class Player:
 
         h = heading - np.dot(heading, p_unit) * p_unit
         h_norm = np.linalg.norm(h)
-        if h_norm == 0.0:
+        if h_norm < 1e-15:
             raise ValueError(
                 "heading has no component tangent to position "
                 "(parallel or zero)"
@@ -246,10 +246,10 @@ class Player:
         best_facet: tuple[int, int] | None = None
         best_dot = 0.0
 
-        for a, b, c in facets:
+        for a, b, other in facets:
             v_a = fan.vectors(which=(a,))[0]
             v_b = fan.vectors(which=(b,))[0]
-            v_c = fan.vectors(which=(c,))[0]
+            v_c = fan.vectors(which=(other,))[0]
             n = np.cross(v_a, v_b)
             if np.dot(n, v_c) > 0:
                 n = -n

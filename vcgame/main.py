@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+import numpy as np
+
 from src.display import run_display_demo
 
 
@@ -94,7 +96,7 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         metavar="N",
-        help="Initial color mode: 0=none, 1=radius, 2=sun (default: 0).",
+        help="Initial color mode: 0=sun, 1=radius, 2=wireframe (default: 0).",
     )
     p.add_argument(
         "--flashlight",
@@ -123,7 +125,6 @@ def main() -> None:
         from src.generate_cube import cube_fan, cube_vc
         fan = cube_fan(3)
         vc  = cube_vc(3)
-    import numpy as np
 
     def _parse_vec(s):
         return np.array([float(x) for x in s.split(",")], dtype=float)
