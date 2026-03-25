@@ -1389,9 +1389,9 @@ class Renderer:
             col = cx + int(round(coord[0] * scale * 2))
             row = cy - int(round(coord[1] * scale))
             attr = curses.color_pair(3) | curses.A_BOLD
-            for dr, s in ((-1, "^^"), (0, "||")):
+            for dr, s in ((-1, "\u25b2"), (0, "\u2588")):
                 r, c = row + dr, col
-                if 0 <= r < rows - _HUD_ROWS and 0 <= c + 1 < cols - 1:
+                if 0 <= r < rows - _HUD_ROWS and 0 <= c < cols - 1:
                     _addstr(scr, r, c, s, attr)
 
         # ── irregular banner ─────────────────────────────────────────────────
