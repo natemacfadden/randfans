@@ -3,7 +3,31 @@ scratch/
 *.dat
 *.png
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+
+
+# C gitignore template (from GitHub)
+# ----------------------------------
 # Prerequisites
 *.d
 
