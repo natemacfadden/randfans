@@ -12,7 +12,6 @@ from renderer.renderer import (
     _project,
     _compute_p_surface,
     _pixel_row_positions,
-    _batch_ray_triangle,
     _sphere_row_hits,
     _shadow_blocked,
     _compute_brightness,
@@ -286,58 +285,6 @@ def test_pixel_row_positions_vary_along_e2(flat_tri) -> None:
     diff = out[1] - out[0]
     np.testing.assert_allclose(diff, 0.5 * flat_tri["e2"], atol=1e-10)
 
-
-# ---------------------------------------------------------------
-# _batch_ray_triangle  (Task 2)
-# ---------------------------------------------------------------
-
-def test_batch_ray_hits_triangle_center(flat_tri) -> None:
-    # Screen at x=2, ray direction = -p = [-1,0,0]
-    # Centroid of triangle ≈ (v0+v1+v2)/3 = [1, 1/3, 1/3]
-    # Pixel pointing at centroid:  pixel = [2, 1/3, 1/3]
-    pixel = np.array([[2.0, 1.0/3, 1.0/3]])
-    d     = -flat_tri["p"]
-    t     = _batch_ray_triangle(pixel, d, flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
-    assert np.isfinite(t[0])
-    np.testing.assert_allclose(t[0], 1.0, atol=1e-6)
-
-
-def test_batch_ray_misses_outside_triangle(flat_tri) -> None:
-    # Pixel aimed at [1, 2, 2] — well outside the triangle
-    pixel = np.array([[2.0, 2.0, 2.0]])
-    d     = -flat_tri["p"]
-    t     = _batch_ray_triangle(pixel, d, flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
-    assert not np.isfinite(t[0])
-
-
-def test_batch_ray_hit_point_on_plane(flat_tri) -> None:
-    pixel = np.array([[2.0, 0.2, 0.2]])
-    d     = -flat_tri["p"]
-    t     = _batch_ray_triangle(pixel, d, flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
-    assert np.isfinite(t[0])
-    hit = pixel[0] + float(t[0]) * d
-    # hit must lie on x=1 plane
-    np.testing.assert_allclose(hit[0], 1.0, atol=1e-6)
-
-
-def test_batch_ray_multiple_pixels(flat_tri) -> None:
-    # Two pixels: one hits, one misses
-    pixels = np.array([
-        [2.0, 0.2, 0.2],   # hits
-        [2.0, 2.0, 2.0],   # misses
-    ])
-    d = -flat_tri["p"]
-    t = _batch_ray_triangle(pixels, d, flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
-    assert np.isfinite(t[0])
-    assert not np.isfinite(t[1])
-
-
-def test_batch_ray_parallel_ray_returns_inf(flat_tri) -> None:
-    pixels = np.array([[2.0, 0.2, 0.2]])
-    d_par  = np.array([0.0, 1.0, 0.0])   # parallel to face
-    t      = _batch_ray_triangle(pixels, d_par,
-                                  flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
-    assert not np.isfinite(t[0])
 
 
 # ---------------------------------------------------------------

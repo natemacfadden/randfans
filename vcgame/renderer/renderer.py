@@ -312,49 +312,6 @@ def _pixel_row_positions(
     return row_center[np.newaxis, :] + u_arr[:, np.newaxis] * e2[np.newaxis, :]
 
 
-def _batch_ray_triangle(
-    pixel_row: np.ndarray,
-    d: np.ndarray,
-    v0: np.ndarray,
-    v1: np.ndarray,
-    v2: np.ndarray,
-) -> np.ndarray:
-    """Batched Möller–Trumbore intersection for a row of ray origins.
-
-    All rays share the same direction ``d``.
-
-    Parameters
-    ----------
-    pixel_row : np.ndarray
-        Ray origins, shape ``(N, 3)``.
-    d : np.ndarray
-        Shared ray direction, shape ``(3,)``.
-    v0, v1, v2 : np.ndarray
-        Triangle vertices, shape ``(3,)`` each.
-
-    Returns
-    -------
-    np.ndarray
-        Shape ``(N,)`` — intersection distance ``t > 1e-6`` for each ray,
-        or ``inf`` if no intersection.
-    """
-    edge1 = v1 - v0
-    edge2 = v2 - v0
-    h     = np.cross(d, edge2)            # (3,)
-    a     = float(np.dot(edge1, h))
-    if abs(a) < 1e-8:
-        return np.full(len(pixel_row), np.inf)
-    f     = 1.0 / a
-    s     = pixel_row - v0                # (N, 3)
-    u     = f * (s @ h)                   # (N,)
-    q     = np.cross(s, edge1)            # (N, 3)
-    vv    = f * (q @ d)                   # (N,)
-    t     = f * (q @ edge2)               # (N,)
-    valid = (u >= 0.0) & (u <= 1.0) & (vv >= 0.0) & (u + vv <= 1.0) & (t > 1e-6)
-    result = np.full(len(pixel_row), np.inf)
-    result[valid] = t[valid]
-    return result
-
 
 def _sphere_row_hits(
     pixel_row: np.ndarray,
@@ -592,6 +549,93 @@ def _compute_brightness(
             brt = max(0.0, min(1.0, _DIM_LEVEL + fl_b * _FL_BOOST))
 
     return brt
+
+
+# ---------------------------------------------------------------------------
+# JIT shadow kernel
+# ---------------------------------------------------------------------------
+
+@numba.njit(parallel=True, cache=True)
+def _shadow_blocked_all(
+    hit_pos:  np.ndarray,
+    target:   np.ndarray,
+    v0s:      np.ndarray,
+    v1s:      np.ndarray,
+    v2s:      np.ndarray,
+    skip_idx: np.ndarray,
+    eps:      float = 1e-3,
+) -> np.ndarray:
+    """Shadow test for all hit pixels at once via Möller–Trumbore.
+
+    Parameters
+    ----------
+    hit_pos  : (N, 3)  surface hit positions
+    target   : (3,)    light source position (sun or flashlight)
+    v0s, v1s, v2s : (T, 3)  triangle vertices
+    skip_idx : (N,)  int32  triangle index to skip per pixel (-1 = skip none)
+    eps      : float  nudge along shadow ray to avoid self-intersection
+
+    Returns
+    -------
+    shadowed : (N,) bool  — True if the path to the light is blocked
+    """
+    N = hit_pos.shape[0]
+    T = v0s.shape[0]
+    shadowed = np.zeros(N, numba.boolean)
+
+    for i in numba.prange(N):
+        dx = target[0] - hit_pos[i, 0]
+        dy = target[1] - hit_pos[i, 1]
+        dz = target[2] - hit_pos[i, 2]
+        dist = (dx*dx + dy*dy + dz*dz) ** 0.5
+        if dist < 1e-12:
+            continue
+        inv = 1.0 / dist
+        dx *= inv; dy *= inv; dz *= inv
+
+        ox = hit_pos[i, 0] + eps * dx
+        oy = hit_pos[i, 1] + eps * dy
+        oz = hit_pos[i, 2] + eps * dz
+
+        for k in range(T):
+            if k == skip_idx[i]:
+                continue
+
+            e1x = v1s[k,0] - v0s[k,0]
+            e1y = v1s[k,1] - v0s[k,1]
+            e1z = v1s[k,2] - v0s[k,2]
+            e2x = v2s[k,0] - v0s[k,0]
+            e2y = v2s[k,1] - v0s[k,1]
+            e2z = v2s[k,2] - v0s[k,2]
+
+            hx = dy*e2z - dz*e2y
+            hy = dz*e2x - dx*e2z
+            hz = dx*e2y - dy*e2x
+            a  = e1x*hx + e1y*hy + e1z*hz
+            if abs(a) < 1e-8:
+                continue
+
+            f  = 1.0 / a
+            sx = ox - v0s[k,0]
+            sy = oy - v0s[k,1]
+            sz = oz - v0s[k,2]
+            u  = f * (sx*hx + sy*hy + sz*hz)
+            if u < 0.0 or u > 1.0:
+                continue
+
+            qx = sy*e1z - sz*e1y
+            qy = sz*e1x - sx*e1z
+            qz = sx*e1y - sy*e1x
+            vv = f * (dx*qx + dy*qy + dz*qz)
+            if vv < 0.0 or u + vv > 1.0:
+                continue
+
+            t = f * (e2x*qx + e2y*qy + e2z*qz)
+            if t > 1e-6 and t < dist - eps:
+                shadowed[i] = True
+                break
+
+    return shadowed
 
 
 # ---------------------------------------------------------------------------
@@ -966,26 +1010,125 @@ class Renderer:
                             _addstr(scr, _rows_out[k], _cols_out[k],
                                     _sym_ramp[_sidxs[k]],
                                     curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
-                    else:
-                        for k in range(len(_hit_flat)):
-                            ct     = all_cones_list[_hit_ci[k]]
-                            face_n = cone_normals[ct]
-                            brt = _compute_brightness(
-                                _hit_pos[k], face_n,
-                                _sun_sub_idx.get(_ct_to_idx[ct], -1),
-                                _ct_to_idx[curr_ct],
-                                color_mode, r_max, sun_pos_cur,
-                                False,
-                                flashlight, p_src, h_proj, cos_tmax,
-                                _sun_v0s, _sun_v1s, _sun_v2s,
-                                _all_v0s, _all_v1s, _all_v2s,
-                            )
-                            t_n   = max(0.0, min(1.0, brt))
-                            s_idx = round(t_n * (_n_ramp - 1))
-                            ch    = _sym_ramp[max(0, min(_n_ramp - 1, s_idx))]
-                            pair  = _RADIUS_PAIR_START + round(t_n * (_n_r - 1))
+                    elif color_mode == 2 and sun_pos_cur is not None and not flashlight:
+                        # Sun mode, no flashlight: batch shadow test then
+                        # vectorise brightness over all lit pixels.
+                        _NP = len(_hit_flat)
+                        _skip = np.array(
+                            [_sun_sub_idx.get(int(_hit_ci[k]), -1)
+                             for k in range(_NP)],
+                            dtype=np.int32,
+                        )
+                        _shadowed = _shadow_blocked_all(
+                            _hit_pos, sun_pos_cur,
+                            _sun_v0s, _sun_v1s, _sun_v2s, _skip,
+                        )
+                        _face_ns = np.array(
+                            [cone_normals[all_cones_list[_hit_ci[k]]]
+                             for k in range(_NP)]
+                        )
+                        _to_sun  = sun_pos_cur - _hit_pos          # (NP, 3)
+                        _dists   = np.linalg.norm(_to_sun, axis=1) # (NP,)
+                        _to_sun_u = _to_sun / np.maximum(_dists[:, None], 1e-12)
+                        _lam = np.maximum(0.0,
+                            np.einsum('ni,ni->n', _face_ns, _to_sun_u))
+                        _lit_brt = np.minimum(
+                            _SUN_MAX,
+                            _SUN_AMBIENT + (1.0 - _SUN_AMBIENT)
+                            * _lam * _SUN_BRIGHTNESS / np.maximum(_dists**2, 1e-12)
+                        )
+                        _brts = np.where(_shadowed, _SUN_AMBIENT, _lit_brt)
+                        _brts = np.clip(_brts, 0.0, 1.0)
+                        _sidxs = np.clip(
+                            np.round(_brts * (_n_ramp - 1)).astype(int),
+                            0, _n_ramp - 1,
+                        )
+                        _pairs = (
+                            _RADIUS_PAIR_START
+                            + np.round(_brts * (_n_r - 1)).astype(int)
+                        )
+                        for k in range(_NP):
                             _addstr(scr, _rows_out[k], _cols_out[k],
-                                    ch, curses.color_pair(pair) | curses.A_BOLD)
+                                    _sym_ramp[_sidxs[k]],
+                                    curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
+                    else:
+                        # Remaining cases: flashlight on, and/or color_mode==1
+                        # with flashlight.  Vectorise flashlight brightness then
+                        # combine with base (radius or sun).
+                        _NP = len(_hit_flat)
+
+                        # ── base brightness ───────────────────────────────────
+                        if color_mode == 1:
+                            _brts = np.clip(
+                                np.linalg.norm(_hit_pos, axis=1) / r_max * _DIM_LEVEL,
+                                0.0, 1.0,
+                            )
+                        elif color_mode == 2 and sun_pos_cur is not None:
+                            _skip_sun = np.array(
+                                [_sun_sub_idx.get(int(_hit_ci[k]), -1)
+                                 for k in range(_NP)],
+                                dtype=np.int32,
+                            )
+                            _shadowed_sun = _shadow_blocked_all(
+                                _hit_pos, sun_pos_cur,
+                                _sun_v0s, _sun_v1s, _sun_v2s, _skip_sun,
+                            )
+                            _face_ns = np.array(
+                                [cone_normals[all_cones_list[_hit_ci[k]]]
+                                 for k in range(_NP)]
+                            )
+                            _to_sun  = sun_pos_cur - _hit_pos
+                            _dists_s = np.linalg.norm(_to_sun, axis=1)
+                            _to_sun_u = _to_sun / np.maximum(_dists_s[:, None], 1e-12)
+                            _lam = np.maximum(
+                                0.0, np.einsum('ni,ni->n', _face_ns, _to_sun_u))
+                            _lit = np.minimum(
+                                _SUN_MAX,
+                                _SUN_AMBIENT + (1.0 - _SUN_AMBIENT)
+                                * _lam * _SUN_BRIGHTNESS
+                                / np.maximum(_dists_s**2, 1e-12),
+                            )
+                            _brts = np.where(_shadowed_sun, _SUN_AMBIENT, _lit)
+                        else:
+                            _brts = np.full(_NP, _DIM_LEVEL)
+
+                        # ── flashlight contribution ───────────────────────────
+                        if flashlight and p_src is not None and h_proj is not None:
+                            _dv      = _hit_pos - p_src             # (NP, 3)
+                            _dists_f = np.linalg.norm(_dv, axis=1)  # (NP,)
+                            _dv_u    = _dv / np.maximum(_dists_f[:, None], 1e-12)
+                            _cos_a   = _dv_u @ h_proj               # (NP,)
+                            _in_cone = _cos_a > cos_tmax
+                            _skip_fl = np.full(_NP, _ct_to_idx[curr_ct], dtype=np.int32)
+                            _shad_fl = _shadow_blocked_all(
+                                _hit_pos, p_src,
+                                _all_v0s, _all_v1s, _all_v2s, _skip_fl,
+                            )
+                            _fl_raw  = ((_cos_a - cos_tmax)
+                                        / max(1.0 - cos_tmax, 1e-12))
+                            _fl_b    = (np.where(_in_cone & ~_shad_fl,
+                                                 _fl_raw**3
+                                                 / (1.0 + 20.0 * _dists_f**2),
+                                                 0.0))
+                            if color_mode == 2:
+                                _brts = np.clip(_brts + _fl_b * 0.55, 0.0, 1.0)
+                            else:
+                                _brts = np.clip(_DIM_LEVEL + _fl_b * _FL_BOOST,
+                                                0.0, 1.0)
+
+                        _brts  = np.clip(_brts, 0.0, 1.0)
+                        _sidxs = np.clip(
+                            np.round(_brts * (_n_ramp - 1)).astype(int),
+                            0, _n_ramp - 1,
+                        )
+                        _pairs = (
+                            _RADIUS_PAIR_START
+                            + np.round(_brts * (_n_r - 1)).astype(int)
+                        )
+                        for k in range(_NP):
+                            _addstr(scr, _rows_out[k], _cols_out[k],
+                                    _sym_ramp[_sidxs[k]],
+                                    curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
 
         # ── screen_pt and _draw_edge closures (used by edge pass) ────────────
         def screen_pt(label: int) -> tuple[int, int] | None:
