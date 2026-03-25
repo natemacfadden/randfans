@@ -95,9 +95,13 @@ def render_frame(player: Player3D, label: str = "") -> str:
                     float(np.dot(rel, up)),
                     float(np.dot(rel, fwd))))
 
-    # Draw edges with near-plane clipping
+    # Draw edges back-to-front (painter's algorithm) with near-plane clipping
     _CH = {"cube": "*", "axis": "+", "grid": "."}
-    for (i, j), style in zip(edges, styles):
+    order = sorted(range(len(edges)),
+                   key=lambda k: cam[edges[k][0]][2] + cam[edges[k][1]][2],
+                   reverse=True)
+    for k in order:
+        (i, j), style = edges[k], styles[k]
         x0, y0, z0 = cam[i]
         x1, y1, z1 = cam[j]
         if z0 < _NEAR_CLIP and z1 < _NEAR_CLIP:
@@ -136,7 +140,7 @@ def render_frame(player: Player3D, label: str = "") -> str:
         f"spd {player.speed:.2f}"
     )
     scr.addstr(r0h + 1, 0,
-        "[↑↓]pitch [←→]yaw [z/c]roll [w/s]thrust [a/d]strafe [r/f]lift [+/-]spd [q]quit"
+        "[↑↓]pitch [←→]yaw [q/e]roll [w/s]thrust [a/d]strafe [r/f]lift [+/-]spd [esc]quit"
     )
 
     header = f"── {label} ".ljust(cols - 1, "─") if label else "─" * (cols - 1)

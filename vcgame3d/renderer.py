@@ -81,6 +81,7 @@ def draw(
     pts:     list,
     edges:   list,
     styles:  list,
+    hud:     bool = True,
 ) -> None:
     rows, cols = scr.getmaxyx()
     draw_rows  = rows - _HUD_ROWS
@@ -102,8 +103,12 @@ def draw(
                     float(np.dot(rel, up)),
                     float(np.dot(rel, fwd))))
 
-    # Draw edges with near-plane clipping
-    for (i, j), style in zip(edges, styles):
+    # Draw edges back-to-front (painter's algorithm) with near-plane clipping
+    order = sorted(range(len(edges)),
+                   key=lambda k: cam[edges[k][0]][2] + cam[edges[k][1]][2],
+                   reverse=True)
+    for k in order:
+        (i, j), style = edges[k], styles[k]
         x0, y0, z0 = cam[i]
         x1, y1, z1 = cam[j]
         if z0 < _NEAR_CLIP and z1 < _NEAR_CLIP:
@@ -130,15 +135,19 @@ def draw(
     _addstr(scr, cy + 1, cx,     "│", attr)
 
     # HUD
-    _draw_hud(scr, rows, cols, player)
+    _draw_hud(scr, rows, cols, player, hud)
 
 
-def _draw_hud(scr, rows: int, cols: int, player: Player3D) -> None:
+def _draw_hud(scr, rows: int, cols: int, player: Player3D, hud: bool = True) -> None:
     attr_hud = curses.color_pair(_CP_HUD)
     r0       = rows - _HUD_ROWS
     blank    = " " * (cols - 1)
     for hr in range(_HUD_ROWS):
         _addstr(scr, r0 + hr, 0, blank, attr_hud)
+
+    if not hud:
+        _addstr(scr, r0, 0, "[H]UD off", attr_hud)
+        return
 
     pos = player.position
     fwd = player.forward
@@ -150,8 +159,8 @@ def _draw_hud(scr, rows: int, cols: int, player: Player3D) -> None:
         f"up ({up[0]:+5.2f}, {up[1]:+5.2f}, {up[2]:+5.2f})  "
         f"spd {player.speed:.2f}"
     )
-    line1 = "[↑↓] pitch   [←→] yaw   [z/c] roll   [w/s] thrust   [a/d] strafe   [r/f] lift"
-    line2 = "[+/-] speed  [space] brake  [q] quit"
+    line1 = "[↑↓] pitch   [←→] yaw   [q/e] roll   [w/s] thrust   [a/d] strafe   [r/f] lift"
+    line2 = "[+/-] speed  [space] brake  [H]UD on  [esc] quit"
 
     _addstr(scr, r0,     0, line0[:cols - 1], attr_hud)
     _addstr(scr, r0 + 1, 0, line1[:cols - 1], attr_hud)

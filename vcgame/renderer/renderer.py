@@ -778,6 +778,7 @@ class Renderer:
         symbol_mode:    int   = 0,
         pixel_debug:    bool  = False,
         edge_thickness: int   = 2,
+        hud:            bool  = True,
     ) -> list[str] | None:
         """Render one frame.
 
@@ -1423,7 +1424,7 @@ class Renderer:
 
         # ── HUD ──────────────────────────────────────────────────────────────
         facet_str  = str(pointed_facet) if pointed_facet else "none"
-        tail       = "[q]uit"
+        tail       = "[H]UD on  [esc] quit"
         cone_str   = f"  cone={current_cone}"
         facet_row1 = f"  facet={facet_str}"
         agt_str    = "  [A]agent:ON" if agent_active else "  [A]agent:off"
@@ -1451,6 +1452,11 @@ class Renderer:
             _blank = " " * (cols - 1)
             for _hr in range(_HUD_ROWS):
                 scr.addstr(rows - _HUD_ROWS + _hr, 0, _blank, curses.color_pair(4))
+
+            if not hud:
+                scr.addstr(rows - _HUD_ROWS, 0,
+                           "[H]UD off"[: cols - 1], curses.color_pair(4))
+                return None
 
             col = 0
             r0  = rows - _HUD_ROWS

@@ -20,6 +20,7 @@ _KEY_TTL    = 0.12
 
 
 def run() -> None:
+    os.environ.setdefault("ESCDELAY", "25")
     curses.wrapper(_main)
 
 
@@ -31,6 +32,7 @@ def _main(stdscr) -> None:
 
     player = Player3D(position=(0.0, 0.0, -5.0))
     pts, edges, styles = build_scene()
+    hud_on = True
 
     # ── pynput for smooth key hold ────────────────────────────────────
     _active: set = set()
@@ -83,8 +85,10 @@ def _main(stdscr) -> None:
                 key = stdscr.getch()
                 if key == -1:
                     break
-                if key == ord("q"):
+                if key == 27:  # Escape
                     quit_game = True
+                if key == ord("h"):
+                    hud_on = not hud_on
                 if not _use_pynput:
                     _last_seen[key] = time.monotonic()
             if quit_game:
@@ -103,8 +107,8 @@ def _main(stdscr) -> None:
             if curses.KEY_DOWN  in active: player.pitch(-_TURN_RATE)
             if curses.KEY_LEFT  in active: player.yaw(   _TURN_RATE)
             if curses.KEY_RIGHT in active: player.yaw(  -_TURN_RATE)
-            if "z" in active: player.roll(-_TURN_RATE)
-            if "c" in active: player.roll( _TURN_RATE)
+            if "q" in active: player.roll(-_TURN_RATE)
+            if "e" in active: player.roll( _TURN_RATE)
             if "w" in active: player.thrust( 1.0)
             if "s" in active: player.thrust(-1.0)
             if "a" in active: player.strafe(-1.0)
@@ -120,7 +124,7 @@ def _main(stdscr) -> None:
                 player.speed = max(_SPEED_MIN, player.speed - _SPEED_STEP)
 
             # ── render ────────────────────────────────────────────────
-            draw(stdscr, player, pts, edges, styles)
+            draw(stdscr, player, pts, edges, styles, hud=hud_on)
             stdscr.refresh()
             time.sleep(1.0 / _FPS)
 

@@ -224,7 +224,7 @@ def run_display_demo(
     cli_cmd: str = "",
     max_frames: int | None = None,
 ) -> None:
-    """Launch a curses demo: render the fan with a player; quit on 'q'.
+    """Launch a curses demo: render the fan with a player; quit on Escape.
 
     Parameters
     ----------
@@ -306,6 +306,7 @@ def run_display_demo(
         color_mode     = initial_color
         flashlight_on  = initial_flashlight
         symbol_mode    = 0
+        hud_on         = True
         agent_active   = agent is not None
         _speed         = LAT_ACCEL / TURN  # start at the critical speed
         _turn_rate     = TURN
@@ -428,7 +429,8 @@ def run_display_demo(
                                       flashlight=flashlight_on,
                                       symbol_mode=symbol_mode,
                                       pixel_debug=_debug_on,
-                                      edge_thickness=_edge_thickness)
+                                      edge_thickness=_edge_thickness,
+                                      hud=hud_on)
                 _sun_angle += _SUN_ROT_RATE
 
                 if _debug_on:
@@ -473,8 +475,10 @@ def run_display_demo(
                         break
                     if key in _MOVE_SET:
                         _move_keys.add(key)
-                    elif key == ord("q"):
+                    elif key == 27:  # Escape
                         _quit = True
+                    elif key == ord("h"):
+                        hud_on = not hud_on
                     elif key == ord("a"):
                         agent_active = not agent_active
                     elif key == ord("s"):
@@ -572,6 +576,7 @@ def run_display_demo(
     _devnull_fd  = os.open(os.devnull, os.O_WRONLY)
     os.dup2(_devnull_fd, _stderr_fd)
     os.close(_devnull_fd)
+    os.environ.setdefault("ESCDELAY", "25")
     try:
         curses.wrapper(_main)
     finally:

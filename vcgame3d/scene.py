@@ -38,7 +38,7 @@ def _make_grid(y=-1.0, lo=-3, hi=3):
         edges.append((i, i + 1))
     return pts, edges
 
-_GRID_PTS, _GRID_EDGES = _make_grid(y=-1.5)
+_GRID_PTS, _GRID_EDGES = _make_grid(y=0.0)
 
 
 def build_scene():
