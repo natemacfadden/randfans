@@ -40,7 +40,7 @@ _SYMBOL_STYLES: tuple = (
     ("quadrant", " \u2596\u259a\u2599\u2588"),           # (sp)▖▚▙█
     ("vert",     "\u258f\u258e\u258d\u258c\u258b\u258a\u2589\u2588"),  # ▏▎▍▌▋▊▉█
     ("horiz",    "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"),  # ▁▂▃▄▅▆▇█
-    ("digits",   "123456789"),                           # 1–9
+    ("digits",   "0123456789"),                          # 0–9
 )
 _M3_HEIGHT     = 0.003  # player elevation above current face (flashlight mode)
 _M3_THETA_MAX  = 55.0   # flashlight cone half-angle from heading, degrees
