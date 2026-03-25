@@ -28,8 +28,6 @@ from renderer.renderer import (
     _orient_normal,
     _M3_HEIGHT,
     _M3_THETA_MAX,
-    _COLOR_LABELS,
-    _SYMBOL_STYLES,
     _HUD_ROWS,
     _ray_intersects_triangle,
 )
@@ -39,7 +37,7 @@ if TYPE_CHECKING:
     from _curses import _CursesWindow
 
 
-def _flashlight_debug_dump(
+def _debug_dump(
     player,
     fan,
     stdscr: "_CursesWindow",
@@ -47,7 +45,7 @@ def _flashlight_debug_dump(
     vectors: list | None = None,
     cli_cmd: str = "",
 ) -> list[str]:
-    """Compute and return flashlight geometry debug info as a list of lines."""
+    """Compute and return geometry debug info as a list of lines."""
     p      = np.asarray(player.direction, float)   # unit direction (geometry)
     p_cart = np.asarray(player.cartesian,  float)  # actual 3D position
     e1     = np.asarray(player.heading,    float)
@@ -263,7 +261,6 @@ def run_display_demo(
     _max_norm       = float(np.linalg.norm(fan.vectors(), axis=1).max()) or 1.0
     _view_scale     = _TARGET_NORM / _max_norm
     _allow_deletion  = allow_deletion   # capture before _main shadows the name
-    _pending_prints: list[str] = []    # snapshots queued by 'p', printed after curses exits
     _debug_log_path  = "/tmp/vcgame_debug.txt"
 
     def _snapshot(f: object) -> str:
@@ -433,10 +430,12 @@ def run_display_demo(
                 _sun_angle += _SUN_ROT_RATE
 
                 if _debug_on:
-                    _dbg_lines = _flashlight_debug_dump(
+                    _dbg_lines = _debug_dump(
                         player, nonlocal_fan[0], stdscr, _view_scale,
                         vectors=vectors, cli_cmd=cli_cmd,
                     )
+                    _snap_lines = _snapshot(nonlocal_fan[0]).splitlines()
+                    _dbg_lines = _dbg_lines + [""] + _snap_lines
                     with open(_debug_log_path, "w") as _df:
                         _df.write("\n".join(_dbg_lines) + "\n")
                         if _pdbg:
@@ -474,28 +473,30 @@ def run_display_demo(
                         _move_keys.add(key)
                     elif key == ord("q"):
                         _quit = True
-                    elif key == ord("p"):
-                        _pending_prints.append(_snapshot(nonlocal_fan[0]))
-                    elif key == ord("w"):
-                        agent_active = not agent_active
                     elif key == ord("a"):
+                        agent_active = not agent_active
+                    elif key == ord("s"):
                         sphere_mode = not sphere_mode
                     elif key == ord("d"):
                         allow_deletion = not allow_deletion
-                    elif key == ord("c"):
-                        locked = not locked
-                    elif key == ord("s"):
-                        color_mode = (
-                            (color_mode + 1) % len(_COLOR_LABELS)
-                        )
-                    elif key == ord("z"):
-                        symbol_mode = (
-                            (symbol_mode + 1) % len(_SYMBOL_STYLES)
-                        )
-                    elif key == ord("x"):
-                        flashlight_on = not flashlight_on
                     elif key == ord("f"):
+                        flashlight_on = not flashlight_on
+                    elif key == ord("l"):
+                        locked = not locked
+                    elif key == ord("p"):
                         _debug_on = not _debug_on
+                    elif key == ord("1"):
+                        color_mode = 1 if color_mode != 1 else 0
+                    elif key == ord("2"):
+                        color_mode = 2 if color_mode != 2 else 0
+                    elif key == ord("3"):
+                        color_mode = 3 if color_mode != 3 else 0
+                    elif key == ord("8"):
+                        symbol_mode = 0
+                    elif key == ord("9"):
+                        symbol_mode = 1
+                    elif key == ord("0"):
+                        symbol_mode = 2
                 if _quit:
                     break
 
@@ -569,7 +570,3 @@ def run_display_demo(
         os.dup2(_saved_fd, _stderr_fd)
         os.close(_saved_fd)
 
-    for i, s in enumerate(_pending_prints):
-        if len(_pending_prints) > 1:
-            print(f"\n--- snapshot {i + 1} of {len(_pending_prints)} ---")
-        print(s)

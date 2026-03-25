@@ -1375,27 +1375,26 @@ class Renderer:
         tail       = "[q]uit"
         cone_str   = f"  cone={current_cone}"
         facet_row1 = f"  facet={facet_str}"
-        agt_str    = "  [W]agent:ON" if agent_active else "  [W]agent:off"
+        agt_str    = "  [A]agent:ON" if agent_active else "  [A]agent:off"
         agt_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if agent_active else curses.color_pair(4))
-        sph_str    = "  [A]sphere:ON" if sphere_mode else "  [A]sphere:off"
+        sph_str    = "  [S]sphere:ON" if sphere_mode else "  [S]sphere:off"
         sph_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if sphere_mode else curses.color_pair(4))
         del_str    = "  [D]del:ON" if allow_deletion else "  [D]del:off"
         del_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if allow_deletion else curses.color_pair(4))
-        lock_str   = "  [C]fix:ON" if locked else "  [C]fix:off"
+        lock_str   = "  [L]fix:ON" if locked else "  [L]fix:off"
         lock_attr  = (curses.color_pair(2) | curses.A_BOLD
                       if locked else curses.color_pair(4))
-        col_str    = f"  [S]fill:{_COLOR_LABELS[color_mode]}"
-        sym_str    = f"  [Z]sym:{_SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][0]}"
-        lit_str    = "  [X]light:ON" if flashlight else "  [X]light:off"
+        col_str    = f"  [1/2/3]fill:{_COLOR_LABELS[color_mode]}"
+        sym_str    = f"  [8/9/0]sym:{_SYMBOL_STYLES[symbol_mode % len(_SYMBOL_STYLES)][0]}"
+        lit_str    = "  [F]light:ON" if flashlight else "  [F]light:off"
         lit_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if flashlight else curses.color_pair(4))
 
-        # ── HUD row 0 (rows-2): [q]uit  cone=…  [A]sphere  [S]fill  [D]el  [W]agent  [F]dbg
-        # ── HUD row 1 (rows-1):          facet=…  [Z]sym    [X]light [C]fix
-        # Stacked key columns match physical keyboard columns (Q-A-Z, W-S-X, E-D-C).
+        # ── HUD row 0 (rows-2): [q]uit  cone=…  [S]sphere  [1/2/3]fill  [D]el  [A]agent  [P]dbg
+        # ── HUD row 1 (rows-1):          facet=…  [8/9/0]sym  [F]light  [L]fix
         try:
             _blank = " " * (cols - 1)
             for _hr in range(_HUD_ROWS):
@@ -1438,7 +1437,7 @@ class Renderer:
                 col += len(agt_str)
 
             if col < cols - 1:
-                scr.addstr(r0, col, "  [F]dbg"[: cols - 1 - col],
+                scr.addstr(r0, col, "  [P]dbg"[: cols - 1 - col],
                            curses.color_pair(4))
 
             r1 = rows - 1
