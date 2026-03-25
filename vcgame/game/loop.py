@@ -394,7 +394,7 @@ def run_display_demo(
         _agent_rate = 1.0   # steps per frame (can be fractional)
         _agent_acc  = 0.0   # fractional accumulator
         _debug_on       = False  # whether debug overlay is visible
-        _edge_thickness = 2
+        _edge_thickness = 1
         _frame_count = 0
 
         try:
@@ -498,7 +498,7 @@ def run_display_demo(
                     elif key == ord("0"):
                         symbol_mode = 2
                     elif key == ord("t"):
-                        _edge_thickness = (_edge_thickness % 3) + 1
+                        _edge_thickness = 2 if _edge_thickness == 1 else 1
                 if _quit:
                     break
 
