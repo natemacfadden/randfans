@@ -1105,14 +1105,12 @@ class Renderer:
                     _cols_out = (_hit_flat  % _C).astype(int)
                     _n_ramp   = len(_sym_ramp)
 
-                    _fill_brts: np.ndarray | None = None
                     if color_mode == 1 and not flashlight:
                         # Radius mode, no lighting: vectorise brightness fully.
                         _brts  = np.clip(
                             np.linalg.norm(_hit_pos, axis=1) / r_max * _DIM_LEVEL,
                             0.0, 1.0,
                         )
-                        _fill_brts = _brts
                         _sidxs = np.clip(
                             np.round(_brts * (_n_ramp - 1)).astype(int),
                             0, _n_ramp - 1,
@@ -1154,7 +1152,6 @@ class Renderer:
                         )
                         _brts = np.where(_shadowed, _SUN_AMBIENT, _lit_brt)
                         _brts = np.clip(_brts, 0.0, 1.0)
-                        _fill_brts = _brts
                         _sidxs = np.clip(
                             np.round(_brts * (_n_ramp - 1)).astype(int),
                             0, _n_ramp - 1,
@@ -1233,7 +1230,6 @@ class Renderer:
                                                 0.0, 1.0)
 
                         _brts  = np.clip(_brts, 0.0, 1.0)
-                        _fill_brts = _brts
                         _sidxs = np.clip(
                             np.round(_brts * (_n_ramp - 1)).astype(int),
                             0, _n_ramp - 1,
@@ -1246,66 +1242,6 @@ class Renderer:
                             _addstr(scr, _rows_out[k], _cols_out[k],
                                     _sym_ramp[_sidxs[k]],
                                     curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
-
-                    # ── speckle post-pass ─────────────────────────────────────
-                    # Bayer-ordered dithering near face-boundary pixels: blend
-                    # a pixel's brightness with the average of its different-face
-                    # neighbours' brightnesses, creating a soft speckling effect
-                    # instead of a hard step at each face edge.
-                    if _fill_brts is not None and _depth_buf_raw is not None:
-                        _BAYER4 = np.array([
-                            [ 0,  8,  2, 10],
-                            [12,  4, 14,  6],
-                            [ 3, 11,  1,  9],
-                            [15,  7, 13,  5],
-                        ], dtype=float) / 16.0
-
-                        _brt_map2 = np.full(_R * _C, -1.0)
-                        _brt_map2[_hit_flat] = _fill_brts
-                        _brt_map2 = _brt_map2.reshape(_R, _C)
-                        _face_2d  = _depth_buf_raw.reshape(_R, _C)
-
-                        _nbr_sum   = np.zeros((_R, _C))
-                        _nbr_count = np.zeros((_R, _C), dtype=int)
-                        for _ddr, _ddc in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                            _nf = np.roll(_face_2d, (-_ddr, -_ddc), axis=(0, 1))
-                            _nb = np.roll(_brt_map2, (-_ddr, -_ddc), axis=(0, 1))
-                            _diff = (
-                                (_face_2d >= 0) & (_nf >= 0)
-                                & (_face_2d != _nf) & (_nb >= 0)
-                            )
-                            _nbr_sum   += np.where(_diff, _nb, 0.0)
-                            _nbr_count += _diff.astype(int)
-
-                        _is_bnd = _nbr_count > 0
-                        if np.any(_is_bnd):
-                            _nbr_avg   = _nbr_sum / np.maximum(_nbr_count, 1).astype(float)
-                            _bayer_val = _BAYER4[
-                                np.arange(_R)[:, None] % 4,
-                                np.arange(_C)[None, :] % 4,
-                            ]
-                            # Threshold scales with fraction of differing neighbours.
-                            _threshold = _nbr_count.astype(float) / 8.0
-                            _use_nbr   = _is_bnd & (_bayer_val < _threshold)
-                            _sp_mask   = (_use_nbr & (_brt_map2 >= 0)).reshape(-1)
-                            _sp_idx    = np.where(_sp_mask)[0]
-                            if len(_sp_idx) > 0:
-                                _sp_r  = (_sp_idx // _C).astype(int)
-                                _sp_c  = (_sp_idx  % _C).astype(int)
-                                _sp_b  = np.clip(_nbr_avg[_sp_r, _sp_c], 0.0, 1.0)
-                                _sp_si = np.clip(
-                                    np.round(_sp_b * (_n_ramp - 1)).astype(int),
-                                    0, _n_ramp - 1,
-                                )
-                                _sp_pr = (
-                                    _RADIUS_PAIR_START
-                                    + np.round(_sp_b * (_n_r - 1)).astype(int)
-                                )
-                                for _sk in range(len(_sp_idx)):
-                                    _addstr(scr, _sp_r[_sk], _sp_c[_sk],
-                                            _sym_ramp[_sp_si[_sk]],
-                                            curses.color_pair(int(_sp_pr[_sk]))
-                                            | curses.A_BOLD)
 
         # ── depth buffer for edge occlusion (flat mode only) ─────────────────
         # Maps (r, c) → index into all_cones_list, or -1 if no face rendered.
