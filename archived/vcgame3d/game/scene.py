@@ -23,7 +23,6 @@ _AXIS_EDGES = [(0,1), (0,2), (0,3)]   # x, y, z
 # ── ground grid (xz plane, y=−1, from −3 to 3 step 1) ───────────────
 def _make_grid(y=-1.0, lo=-3, hi=3):
     pts, edges = [], []
-    n = hi - lo + 1
     # x lines (varying x, fixed z)
     for z in range(lo, hi + 1):
         i = len(pts)

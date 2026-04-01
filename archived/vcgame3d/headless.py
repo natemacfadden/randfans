@@ -7,9 +7,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import numpy as np
-from vcgame3d.player   import Player3D
-from vcgame3d.renderer import _STYLE_ATTR, _HUD_ROWS, _FOV, _NEAR_CLIP
-from vcgame3d.scene    import build_scene
+from vcgame3d.game.player        import Player3D
+from vcgame3d.renderer.renderer  import _STYLE_ATTR, _HUD_ROWS, _FOV, _NEAR_CLIP
+from vcgame3d.game.scene         import build_scene
 
 _ROWS = 40
 _COLS = 120
@@ -54,7 +54,7 @@ _CURSES_STUB = types.SimpleNamespace(
 )
 
 # Patch renderer to use MockScreen-compatible calls
-import vcgame3d.renderer as _rend
+import vcgame3d.renderer.renderer as _rend
 _orig_addstr = _rend._addstr
 
 def _mock_addstr(scr, r, c, text, attr=0):
@@ -70,9 +70,16 @@ import curses
 _orig_color_pair = curses.color_pair if hasattr(curses, "color_pair") else None
 
 
-def render_frame(player: Player3D, label: str = "") -> str:
+def render_frame(
+    player: Player3D,
+    label: str = "",
+    pts=None,
+    edges=None,
+    styles=None,
+) -> str:
     """Render one frame and return as a string."""
-    pts, edges, styles = build_scene()
+    if pts is None or edges is None or styles is None:
+        pts, edges, styles = build_scene()
     scr = MockScreen()
 
     rows, cols = scr.getmaxyx()
