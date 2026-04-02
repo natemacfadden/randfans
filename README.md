@@ -33,7 +33,8 @@ or, more interactively
 python pushing/live_triplot.py --random --fine --data ./data/491_big2face.dat
 ```
 
-No external dependencies — just a C compiler.
+No external dependencies for the core library — just a C compiler. For the interactive plot,
+we use matplotlib to display the triangulations.
 
 ## vcgame
 
