@@ -1,3 +1,20 @@
+# =============================================================================
+#    Copyright (C) 2026  Nate MacFadden
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# =============================================================================
+
 """Curses colour initialisation for the ASCII renderer."""
 
 from __future__ import annotations
@@ -24,6 +41,20 @@ _VIRIDIS_KEYS: list[tuple[int, int, int]] = [
 
 
 def _viridis_rgb(t: float) -> tuple[int, int, int]:
+    """Linearly interpolate between the ``_VIRIDIS_KEYS`` control points.
+
+    Parameters
+    ----------
+    t : float
+        Colormap position in [0, 1], where 0 maps to the first key
+        (dark purple) and 1 maps to the last key (yellow). Clamped if
+        out of range.
+
+    Returns
+    -------
+    tuple[int, int, int]
+        ``(r, g, b)`` in the 0–1000 range used by curses ``init_color``.
+    """
     t  = max(0.0, min(1.0, t))
     s  = t * (len(_VIRIDIS_KEYS) - 1)
     lo = int(s)
@@ -35,6 +66,19 @@ def _viridis_rgb(t: float) -> tuple[int, int, int]:
 
 
 def _init_colors(renderer) -> None:
+    """Initialise all curses color pairs used by the renderer.
+
+    Sets up Viridis gradient pairs for radius coloring, edge-flip indicator
+    pairs (green/red), an irregular-fan background pair, and a dim fill pair.
+    Falls back to basic terminal colors if the terminal does not support
+    color redefinition.
+
+    Parameters
+    ----------
+    renderer : Renderer
+        The renderer instance; ``renderer._n_radius`` is set to the number
+        of Viridis gradient steps successfully initialised.
+    """
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_CYAN,    -1)
