@@ -16,8 +16,9 @@ sufficiently large $c$. This latter interpretation shows that such triangulation
 regular.
 
 A greedy randomized variant thus gives a cheap source of semi-random fine regular
-triangulations — useful as an alternative to full flip-graph traversal. See
-[pushing/README.md](pushing/README.md) for details and algorithm notes.
+triangulations. Gives a more diverse sampling than CYTools' `random_triangulations_fast`
+while not being prohibitively expensive. See [pushing/README.md](pushing/README.md)
+for details and algorithm notes.
 
 Example configurations (various dimensions) are provided in `data/`. Compile and run with:
 
