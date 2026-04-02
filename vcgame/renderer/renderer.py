@@ -1259,7 +1259,32 @@ class Renderer:
                                     _sym_ramp[_sidxs[k]],
                                     curses.color_pair(int(_pairs[k])) | curses.A_BOLD)
 
-        # ── depth buffer for edge occlusion (flat mode only) ─────────────────
+        # ── flat wireframe depth buffer (no fill) ────────────────────────────
+        # When fill is off (color_mode == 0) in flat mode the fill pass never
+        # runs, so _depth_buf_raw stays None and edges draw with no occlusion.
+        # Build it here from the same ray-cast data so _draw_edge can gate
+        # edge pixels even in wireframe mode.
+        if not sphere_mode and _depth_buf_raw is None and len(_front_full_idx):
+            _R_w = rows - _HUD_ROWS
+            _C_w = cols - 1
+            _r_arr_w = np.arange(_R_w, dtype=float)
+            _c_arr_w = np.arange(_C_w, dtype=float)
+            _s_arr_w = (cy - _r_arr_w) / scale
+            _u_arr_w = (_c_arr_w - cx) / (scale * 2.0)
+            _row_centers_w = screen_center + _s_arr_w[:, None] * e1_new[None, :]
+            _all_pix_w = (
+                _row_centers_w[:, None, :]
+                + _u_arr_w[None, :, None] * e2_new[None, None, :]
+            ).reshape(-1, 3)
+            _, _hit_front_w = _hit_pixels_numba(
+                _all_pix_w, _fl_N_mat, _fl_c_vec, _fl_H_mat, -p,
+            )
+            _hit_idx_w = np.full(_R_w * _C_w, -1, dtype=np.int32)
+            _valid_w = _hit_front_w >= 0
+            _hit_idx_w[_valid_w] = _front_full_idx[_hit_front_w[_valid_w]]
+            _depth_buf_raw = _hit_idx_w
+
+        # ── depth buffer for edge occlusion ──────────────────────────────────
         # Maps (r, c) → index into all_cones_list, or -1 if no face rendered.
         _depth_buf: np.ndarray | None = (
             _depth_buf_raw.reshape(rows - _HUD_ROWS, cols - 1)
