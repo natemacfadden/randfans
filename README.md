@@ -23,7 +23,7 @@ Example configurations (various dimensions) are provided in `data/`. Compile and
 
 ```bash
 clang -o pushing pushing/src/demo.c
-./rfp < ./data/20x20x20.dat
+./pushing < ./data/20x20x20.dat
 ```
 
 or, more interactively
