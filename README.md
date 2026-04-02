@@ -20,21 +20,7 @@ triangulations. Gives a more diverse sampling than CYTools' `random_triangulatio
 while not being prohibitively expensive. See [pushing/README.md](pushing/README.md)
 for details and algorithm notes.
 
-Example configurations (various dimensions) are provided in `data/`. Compile and run with:
-
-```bash
-clang -o rfp pushing/src/demo.c
-./rfp < ./data/491_big2face.dat
-```
-
-or, more interactively
-
-```
-python pushing/live_triplot.py --random --fine --data ./data/491_big2face.dat
-```
-
-No external dependencies for the core library — just a C compiler. For the interactive plot,
-we use matplotlib to display the triangulations.
+No external dependencies for the core library — just a C compiler.
 
 ## grow2d *(coming soon)*
 
