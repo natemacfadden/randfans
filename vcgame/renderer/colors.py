@@ -20,6 +20,10 @@
 from __future__ import annotations
 
 import curses
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .renderer import Renderer
 
 
 _RADIUS_PAIR_START = 6
@@ -65,7 +69,7 @@ def _viridis_rgb(t: float) -> tuple[int, int, int]:
     return int(r0 + f*(r1-r0)), int(g0 + f*(g1-g0)), int(b0 + f*(b1-b0))
 
 
-def _init_colors(renderer) -> None:
+def _init_colors(renderer: "Renderer") -> None:
     """Initialise all curses color pairs used by the renderer.
 
     Sets up Viridis gradient pairs for radius coloring, edge-flip indicator

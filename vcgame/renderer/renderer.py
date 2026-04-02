@@ -786,7 +786,7 @@ class Renderer:
         allow_deletion: bool = True,
         color_mode:   int   = 0,
         view_scale:   float = 1.0,
-        flip_status:  dict  | None = None,
+        flip_status:  dict[tuple[int, int], bool] | None = None,
         is_irregular: bool  = False,
         sphere_mode:  bool  = False,
         agent_active: bool  = False,
@@ -797,10 +797,53 @@ class Renderer:
         edge_thickness: int   = 2,
         hud:            bool  = True,
     ) -> list[str] | None:
-        """Render one frame.
+        """Render one frame to the curses screen.
 
-        Returns a list of debug lines if ``pixel_debug=True`` and flat mode is
-        active, otherwise None.
+        Parameters
+        ----------
+        player_pos : np.ndarray
+            Unit direction vector of the player's angular position on S².
+        player_heading : np.ndarray
+            Unit tangent vector of the player's heading.
+        current_cone : tuple[int, ...]
+            Label tuple of the cone containing the player.
+        pointed_facet : tuple[int, int] or None, optional
+            The facet the heading aims toward, highlighted in the HUD.
+        locked : bool, optional
+            When True, flips are suppressed; shown in the HUD.
+        allow_deletion : bool, optional
+            When True, deletion flips are permitted; shown in the HUD.
+        color_mode : int, optional
+            0 = wireframe, 1 = radius gradient, 2 = sun shading.
+        view_scale : float, optional
+            Multiplier on the projected scale; 1.0 fills most of the screen.
+        flip_status : dict[tuple[int, int], bool] or None, optional
+            Maps each edge of the current cone to whether it is flippable.
+            Used to colour edges in the HUD.
+        is_irregular : bool, optional
+            When True, the background is tinted to indicate an irregular fan.
+        sphere_mode : bool, optional
+            When True, edges are drawn as SLERP arcs instead of straight lines.
+        agent_active : bool, optional
+            When True, agent-mode indicator is shown in the HUD.
+        sun_angle : float, optional
+            Current rotation angle of the sun (radians); advances each frame.
+        flashlight : bool, optional
+            When True, only faces inside the flashlight cone are illuminated.
+        symbol_mode : int, optional
+            Index into ``_SYMBOL_STYLES`` selecting the fill character ramp.
+        pixel_debug : bool, optional
+            When True, per-pixel cone labels are written to the debug log.
+        edge_thickness : int, optional
+            1 = single-pixel edges, 2 = thickened edges.
+        hud : bool, optional
+            When False, the HUD rows are suppressed.
+
+        Returns
+        -------
+        list[str] or None
+            Per-pixel debug lines if ``pixel_debug=True`` and not in sphere
+            mode, otherwise ``None``.
         """
 
         # ── setup ────────────────────────────────────────────────────────────

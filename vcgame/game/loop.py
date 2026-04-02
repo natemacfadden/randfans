@@ -59,7 +59,7 @@ def _debug_dump(
     fan,
     stdscr: "_CursesWindow",
     view_scale: float,
-    vectors: list | None = None,
+    vectors: list[list[int]] | None = None,
     cli_cmd: str = "",
 ) -> list[str]:
     """Compute and return geometry debug info as a list of lines."""
@@ -231,13 +231,13 @@ def _debug_dump(
 def run_display_demo(
     fan: Fan,
     vc: object,
-    agent: object = None,
+    agent: object | None = None,
     allow_deletion: bool = False,
     initial_pos: np.ndarray | None = None,
     initial_heading: np.ndarray | None = None,
     initial_color: int = 0,
     initial_flashlight: bool = False,
-    vectors: list | None = None,
+    vectors: list[list[int]] | None = None,
     cli_cmd: str = "",
     max_frames: int | None = None,
 ) -> None:
@@ -263,6 +263,13 @@ def run_display_demo(
         Color mode at startup — 0 wireframe, 1 radius, 2 sun.
     initial_flashlight : bool, optional
         Start with the flashlight on.
+    vectors : list or None, optional
+        Raw integer vectors, included in debug dump output only.
+    cli_cmd : str, optional
+        Reconstructed CLI invocation string, included in debug dump output only.
+    max_frames : int or None, optional
+        If set, exit automatically after this many frames (useful for
+        benchmarking or testing).
     """
     TURN       = 0.04   # min turn rate (radians per frame at 60 fps)
     MAX_TURN   = 0.10   # max turn rate

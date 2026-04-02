@@ -238,7 +238,7 @@ def flat_tri():
 
 
 # ---------------------------------------------------------------
-# _compute_p_surface  (Task 1)
+# _compute_p_surface
 # ---------------------------------------------------------------
 
 def test_p_surface_collinear_with_p(flat_tri) -> None:
@@ -269,7 +269,7 @@ def test_p_surface_known_value(flat_tri) -> None:
 
 
 # ---------------------------------------------------------------
-# _pixel_row_positions  (Task 1)
+# _pixel_row_positions
 # ---------------------------------------------------------------
 
 def test_pixel_row_positions_shape(flat_tri) -> None:
@@ -305,7 +305,7 @@ def test_pixel_row_positions_vary_along_e2(flat_tri) -> None:
 
 
 # ---------------------------------------------------------------
-# _sphere_row_hits  (Task 3)
+# _sphere_row_hits
 # ---------------------------------------------------------------
 
 def test_sphere_row_hits_center_pixel() -> None:
@@ -352,7 +352,7 @@ def test_sphere_row_hits_smallest_positive_root() -> None:
 
 
 # ---------------------------------------------------------------
-# _shadow_blocked  (Task 4)
+# _shadow_blocked
 # ---------------------------------------------------------------
 
 def _make_verts(v0, v1, v2):
@@ -396,7 +396,7 @@ def test_shadow_not_blocked_past_target(flat_tri) -> None:
 
 
 # ---------------------------------------------------------------
-# _compute_brightness  (Task 4)
+# _compute_brightness
 # ---------------------------------------------------------------
 
 def _empty_verts():

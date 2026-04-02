@@ -152,12 +152,11 @@ def main() -> None:
         n_vectors=args.n,
         max_coord=args.maxcoord,
     )
-    vc  = VectorConfiguration(vectors)
+    vc = VectorConfiguration(vectors)
     fan = vc.triangulate()
 
     # Reconstruct the effective CLI for debug dumps.
-    import sys as _sys
-    cli_cmd = " ".join(_sys.argv)
+    cli_cmd = " ".join(sys.argv)
 
     initial_pos     = _parse_sph_arg(args.pos)     if args.pos     else None
     initial_heading = _parse_sph_arg(args.heading) if args.heading else None
