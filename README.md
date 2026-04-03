@@ -22,9 +22,28 @@ for details and algorithm notes.
 
 No external dependencies for the core library — just a C compiler.
 
-## grow2d *(coming soon)*
+## grow2d
 
-Random triangulations of lattice polygons.
+Random fine triangulations of 2D lattice polygons. Originally implemented by me in
+[CYTools](https://github.com/LiamMcAllisterGroup/cytools);
+ported here as a standalone module. C backend planned.
+
+The algorithm starts from a random unimodular triangle, then iteratively
+extends the triangulation by choosing an exterior edge and finding a compatible
+vertex — one forming a unit-area triangle whose new edges don't cross any
+existing edge. Repeating with different seeds samples the space of fine
+triangulations.
+
+Accepts homogenized point configurations (e.g. from `../data/`) and strips
+constant coordinates automatically. Includes a live matplotlib plot. Requires
+numpy and scipy.
+
+```bash
+cd grow2d
+python live_triplot.py --data ../data/491_big2face.dat
+```
+
+See [grow2d/README.md](grow2d/README.md) for details.
 
 ## vcgame
 

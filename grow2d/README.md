@@ -9,8 +9,10 @@ finding a compatible vertex — one that forms a unit-area triangle and whose co
 edges don't cross any existing edge. Repeating with different seeds samples the space
 of fine triangulations.
 
-Ported from [CYTools](https://github.com/LiamMcAllisterGroup/cytools). C backend
-planned.
+Originally implemented by me in
+[CYTools](https://github.com/LiamMcAllisterGroup/cytools)
+(`cytools/ntfe/face_triangulations.py`); ported here as a standalone module.
+C backend planned.
 
 ## Details
 
