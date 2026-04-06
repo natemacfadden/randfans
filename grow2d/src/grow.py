@@ -29,13 +29,13 @@ from geometry import get_bdry, intersect, triangle_area_2x
 
 
 def grow2d(
-    pts: np.ndarray,
+    pts: np.ArrayLike,
     bdry: set = None,
     seed: int = None,
     verbosity: int = 0,
 ) -> set:
     """
-    Grow a fine triangulation (FT) of a 2D lattice polygon.
+    Grow a fine triangulation of a 2D lattice polygon.
 
     Arguments
     ---------
@@ -71,7 +71,7 @@ def grow2d(
     while True:
         start = rand_gen.choice(pts_i, 3, replace=False)
         if triangle_area_2x(pts[start]) == 1:
-            start = sorted(start)
+            start = [int(x) for x in sorted(start)]
             break
 
     simps = {tuple(start)}
@@ -102,7 +102,7 @@ def grow2d(
 
     while choosable:
         edge = rand_gen.choice(list(choosable))
-        edge_lis = list(edge)
+        edge_lis = [int(x) for x in edge]
         to_try = [i for i in pts_i if i not in edge]
         rand_gen.shuffle(to_try)
 
@@ -114,7 +114,7 @@ def grow2d(
                 print("Failed! Returning partial triangulation...")
                 return simps
 
-            i = to_try.pop()
+            i = int(to_try.pop())
 
             if verbosity >= 3:
                 print(f"  Trying vertex {i} ({len(to_try)} left) -> ", end="")
