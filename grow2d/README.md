@@ -12,7 +12,17 @@ of fine triangulations.
 Originally implemented by me in
 [CYTools](https://github.com/LiamMcAllisterGroup/cytools)
 (`cytools/ntfe/face_triangulations.py`); ported here as a standalone module.
-C backend planned.
+C backend via Cython.
+
+## Installation
+
+Requires [Cython](https://cython.org/) and a C compiler. Build the C extension in-place:
+
+```bash
+pip install cython numpy
+pip install -e .
+```
+
 
 ## Details
 
