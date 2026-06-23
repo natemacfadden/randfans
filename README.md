@@ -41,7 +41,7 @@ triangulations. Gives a more diverse sampling than CYTools' `random_triangulatio
 while not being prohibitively expensive. See [pushing/README.md](pushing/README.md)
 for details and algorithm notes.
 
-No external dependencies for the core library — just a C compiler.
+No external dependencies for the core library -- just a C compiler.
 
 ## grow2d (outdated... see [dualGNN](https://github.com/natemacfadden/dualGNN))
 
@@ -51,7 +51,7 @@ ported here as a standalone module with a compiled C backend.
 
 The algorithm starts from a random unimodular triangle, then iteratively
 extends the triangulation by choosing an exterior edge and finding a compatible
-vertex — one forming a unit-area triangle whose new edges don't cross any
+vertex -- one forming a unit-area triangle whose new edges don't cross any
 existing edge. Repeating with different seeds samples the space of fine
 triangulations.
 

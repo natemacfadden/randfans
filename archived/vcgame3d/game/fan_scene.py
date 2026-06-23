@@ -3,10 +3,10 @@ Build a renderable scene from a regfans Fan.
 
 The pipeline:
     Fan (integer ray vectors + cone structure)
-    → normalize rays to S³
-    → subdivide each edge via slerp
-    → project each point S³ → R³
-    → return (pts, edges, styles) for the renderer
+    -> normalize rays to S3
+    -> subdivide each edge via slerp
+    -> project each point S3 -> R3
+    -> return (pts, edges, styles) for the renderer
 
 Public API
 ----------
@@ -41,12 +41,12 @@ def fan_to_scene(
         The fan to render.  Rays are taken from fan.vectors() in the
         order given by fan.labels.
     project : callable
-        A function S³ → R³.  Build one with
+        A function S3 -> R3.  Build one with
         ``vcgame3d.renderer.projection.stereographic_proj()``, or supply
         any callable with the same signature.
     n_subdivisions : int, optional
         Number of slerp steps per fan edge.  1 gives straight projected
-        lines; ≥4 gives visibly curved great-circle arcs.  Default 4.
+        lines; >=4 gives visibly curved great-circle arcs.  Default 4.
 
     Returns
     -------
@@ -74,7 +74,7 @@ def fan_to_scene(
     pts:               list[np.ndarray]        = []
     edges:             list[tuple[int, int]]   = []
     styles:            list[str]               = []
-    arc_pts:           dict[tuple, list[int]]  = {}   # (la,lb) → ordered pts indices
+    arc_pts:           dict[tuple, list[int]]  = {}   # (la,lb) -> ordered pts indices
     edge_label_per_edge: list[tuple[int, int]] = []   # one per entry in edges
 
     for (la, lb) in edge_set:
@@ -100,7 +100,7 @@ def auto_pole(fan) -> np.ndarray:
     """Compute the projection pole as the antipode of the mean ray direction.
 
     Placing the stereographic pole opposite the centre of mass of the rays
-    keeps the projected image roughly centred in R³ and avoids the
+    keeps the projected image roughly centred in R3 and avoids the
     distortion spike that occurs when a ray lands near the default (0,0,0,1)
     pole.
 
@@ -112,7 +112,7 @@ def auto_pole(fan) -> np.ndarray:
     Returns
     -------
     np.ndarray, shape (4,)
-        Unit vector on S³ to use as the projection pole.
+        Unit vector on S3 to use as the projection pole.
     """
     raw_vecs = np.array(fan.vectors(), dtype=float)
     sphere_vecs = np.array([normalize(v) for v in raw_vecs])
@@ -126,17 +126,17 @@ def auto_pole(fan) -> np.ndarray:
 # ── per-vertex helpers ────────────────────────────────────────────────
 
 def fan_vertices(fan, project: Callable) -> dict:
-    """Return the projected R³ position for each ray of the fan.
+    """Return the projected R3 position for each ray of the fan.
 
     Parameters
     ----------
     fan : regfans Fan
     project : callable
-        The same S³ → R³ callable used to build the scene.
+        The same S3 -> R3 callable used to build the scene.
 
     Returns
     -------
-    dict mapping int label → np.ndarray shape (3,)
+    dict mapping int label -> np.ndarray shape (3,)
     """
     labels     = fan.labels
     raw_vecs   = np.array(fan.vectors(), dtype=float)
@@ -145,9 +145,9 @@ def fan_vertices(fan, project: Callable) -> dict:
 
 
 def make_cone_finder(fan):
-    """Return a callable that maps an S³ point → labels of the containing cone.
+    """Return a callable that maps an S3 point -> labels of the containing cone.
 
-    The returned function takes a unit 4-vector on S³ and returns the list of
+    The returned function takes a unit 4-vector on S3 and returns the list of
     ray labels whose positive span contains that point, or None if no maximal
     cone of the fan contains it (e.g. the point is near the projection pole).
 
@@ -157,7 +157,7 @@ def make_cone_finder(fan):
 
     Returns
     -------
-    find_cone : callable (np.ndarray shape (4,)) → list[int] | None
+    find_cone : callable (np.ndarray shape (4,)) -> list[int] | None
     """
     labels       = fan.labels
     raw_vecs     = np.array(fan.vectors(), dtype=float)
@@ -189,7 +189,7 @@ def make_cone_finder(fan):
 # ── built-in fans ─────────────────────────────────────────────────────
 
 class _Simplex4dFan:
-    """The standard 4-simplex fan in R⁴ — no CYTools or regfans required.
+    """The standard 4-simplex fan in R4 -- no CYTools or regfans required.
 
     Rays (integral, sum to zero):
         r1 = ( 1,  1,  1,  1)
@@ -198,10 +198,10 @@ class _Simplex4dFan:
         r4 = ( 0,  0, -1,  0)
         r5 = ( 0,  0,  0, -1)
 
-    Any 4 of the 5 rays form a basis for R⁴, so all C(5,4) = 5 four-element
+    Any 4 of the 5 rays form a basis for R4, so all C(5,4) = 5 four-element
     subsets are maximal cones and the fan is complete.
 
-    preferred_pole is chosen so that |dot(pole, rᵢ_hat)| ≤ 0.5 for all i,
+    preferred_pole is chosen so that |dot(pole, ri_hat)| <= 0.5 for all i,
     avoiding the degenerate case where auto_pole would land on r1_hat.
     """
     labels = (1, 2, 3, 4, 5)
@@ -223,7 +223,7 @@ class _Simplex4dFan:
 def _crosspolytope_fan():
     """Return a Fan over the 4D cross-polytope for offline testing.
 
-    The cross-polytope has 8 vertices: ±e₁, ±e₂, ±e₃, ±e₄.
+    The cross-polytope has 8 vertices: +/-e1, +/-e2, +/-e3, +/-e4.
     No CYTools required.
     """
     from regfans import VectorConfiguration

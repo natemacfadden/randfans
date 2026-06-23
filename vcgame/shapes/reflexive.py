@@ -19,10 +19,10 @@
 Generate integer vectors from the lattice points of a 3D reflexive polytope.
 
 Data source: http://coates.ma.ic.ac.uk/3DReflexivePolytopes/
-There are 4319 polytopes, indexed 0–4318.
+There are 4319 polytopes, indexed 0-4318.
 
 Each polytope page contains a "Integer points" table cell with a
-3 × K matrix (3 coordinate rows, K lattice-point columns).  The
+3 x K matrix (3 coordinate rows, K lattice-point columns).  The
 last column is always the origin, which is excluded.  All other
 columns are used as vectors.
 """
@@ -34,7 +34,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 _BASE_URL   = "http://coates.ma.ic.ac.uk/3DReflexivePolytopes/{}.html"
-N_POLYTOPES = 4319   # polytope ids 0 … 4318
+N_POLYTOPES = 4319   # polytope ids 0 ... 4318
 
 
 class ReflexiveFetchError(OSError):
@@ -44,7 +44,7 @@ class ReflexiveFetchError(OSError):
 def reflexive_vectors(polytope_id: int = 0) -> list[list[int]]:
     """Return non-origin lattice points of a 3D reflexive polytope.
 
-    Fetches data from the Coates–Corti–Galkin–Golyshev–Kasprzyk database.
+    Fetches data from the Coates-Corti-Galkin-Golyshev-Kasprzyk database.
 
     Parameters
     ----------

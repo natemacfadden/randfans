@@ -69,7 +69,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         metavar="ID",
-        help="Reflexive polytope index 0–4318. Only used for 'reflexive'.",
+        help="Reflexive polytope index 0-4318. Only used for 'reflexive'.",
     )
     return p
 

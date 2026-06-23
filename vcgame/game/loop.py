@@ -119,7 +119,7 @@ def _debug_dump(
 
     cos_tmax = math.cos(math.radians(_M3_THETA_MAX))
 
-    # 2D beam axis: straight up on screen (matches draw logic — heading direction)
+    # 2D beam axis: straight up on screen (matches draw logic -- heading direction)
     h_scr_y, h_scr_x, h_scr_len = 1.0, 0.0, 1.0
 
     # ---- spherical coords ---------------------------------------------------
@@ -172,12 +172,12 @@ def _debug_dump(
         L.append(f"vectors : {vectors}")
     L.append(f"pos_3d  : ({p_cart[0]:+.4f}, {p_cart[1]:+.4f}, {p_cart[2]:+.4f})"
              f"  r={float(np.linalg.norm(p_cart)):.4f}")
-    L.append(f"sph     : az={az_deg:+.2f}°  el={el_deg:+.2f}°")
+    L.append(f"sph     : az={az_deg:+.2f} deg  el={el_deg:+.2f} deg")
     L.append(f"heading : ({e1[0]:+.4f}, {e1[1]:+.4f}, {e1[2]:+.4f})")
     L.append(f"cone    : {cone}")
-    L.append(f"screen  : {rows}×{cols}  center=(r={cy},c={cx})  scale={scale:.2f}")
+    L.append(f"screen  : {rows}x{cols}  center=(r={cy},c={cx})  scale={scale:.2f}")
     L.append(f"p_src   : ({p_src[0]:+.4f}, {p_src[1]:+.4f}, {p_src[2]:+.4f})")
-    L.append(f"cos_max : {cos_tmax:.4f}  (half-angle={_M3_THETA_MAX}°)")
+    L.append(f"cos_max : {cos_tmax:.4f}  (half-angle={_M3_THETA_MAX} deg)")
     L.append("")
 
     hdr = (f"{'face':<22} {'r':>4} {'c':>5}  {'dr':>4} {'dc':>5}"
@@ -209,7 +209,7 @@ def _debug_dump(
 
         note = ""
         if ct == cone:
-            note = "← CURRENT FACE"
+            note = "<- CURRENT FACE"
         elif occluded:
             note = "occluded"
         elif not in_hemi:
@@ -260,7 +260,7 @@ def run_display_demo(
     initial_heading : np.ndarray or None, optional
         Starting heading 3-vector.
     initial_color : int, optional
-        Color mode at startup — 0 wireframe, 1 radius, 2 sun.
+        Color mode at startup -- 0 wireframe, 1 radius, 2 sun.
     initial_flashlight : bool, optional
         Start with the flashlight on.
     vectors : list or None, optional

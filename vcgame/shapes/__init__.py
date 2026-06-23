@@ -63,7 +63,7 @@ def get_vectors(
     seed : int, optional
         RNG seed for ``"random"`` shapes.
     polytope_id : int, optional
-        Polytope index for ``"reflexive"`` shapes (0–4318).
+        Polytope index for ``"reflexive"`` shapes (0-4318).
     n : int or None, optional
         Grid size for ``"cube"`` (default 3). Ignored for other shapes.
     n_vectors : int or None, optional
@@ -125,7 +125,7 @@ def load_shape(
     seed : int, optional
         RNG seed for ``"random"`` shapes.
     polytope_id : int, optional
-        Polytope index for ``"reflexive"`` shapes (0–4318).
+        Polytope index for ``"reflexive"`` shapes (0-4318).
     n : int or None, optional
         Grid size for ``"cube"`` (default 3).
     n_vectors : int or None, optional

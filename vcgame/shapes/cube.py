@@ -27,7 +27,7 @@ def cube_vectors(n: int) -> list[list[int]]:
     """Return the boundary lattice points of an n x n x n integer cube.
 
     The cube is centered at the origin. Boundary points are those with at
-    least one coordinate equal to ±(n-1)/2. The origin (interior center)
+    least one coordinate equal to +/-(n-1)/2. The origin (interior center)
     is excluded.
 
     Parameters

@@ -147,7 +147,7 @@ def render_frame(
         f"spd {player.speed:.2f}"
     )
     scr.addstr(r0h + 1, 0,
-        "[↑↓]pitch [←→]yaw [q/e]roll [w/s]thrust [a/d]strafe [r/f]lift [+/-]spd [esc]quit"
+        "[^v]pitch [<>]yaw [q/e]roll [w/s]thrust [a/d]strafe [r/f]lift [+/-]spd [esc]quit"
     )
 
     header = f"── {label} ".ljust(cols - 1, "─") if label else "─" * (cols - 1)
@@ -197,7 +197,7 @@ def run_scenarios() -> str:
     cases.append((
         "static: close-up (z=-2)",
         Player3D(position=(0,0,-2), forward=(0,0,1), up=(0,1,0)),
-        "PREDICT: Cube larger than initial — edges extend toward screen corners. "
+        "PREDICT: Cube larger than initial -- edges extend toward screen corners. "
         "Near face very wide, far face smaller (perspective). Grid nearly out of view."
     ))
     cases.append((
@@ -216,7 +216,7 @@ def run_scenarios() -> str:
         "static: diagonal corner view",
         Player3D(position=(-4,3,-4), forward=(1,-0.5,1), up=(0,1,0)),
         "PREDICT: Cube visible with 3 faces showing (corner perspective). "
-        "Asymmetric — no face is parallel to screen. Grid tilted."
+        "Asymmetric -- no face is parallel to screen. Grid tilted."
     ))
     cases.append((
         "static: inside cube (z=0, y=0, x=0)",
@@ -225,13 +225,13 @@ def run_scenarios() -> str:
         "Far face in centre, near face behind camera (clipped). Grid below."
     ))
 
-    # 2. Control: thrust forward (w) — move from z=-5 to z=-2
+    # 2. control: thrust forward (w) -- move from z=-5 to z=-2
     p_thrust = Player3D(**base)
     for _ in range(20): p_thrust.thrust(1.0)
     cases.append((
         "control: thrust forward x20 (should be close-up)",
         p_thrust,
-        "PREDICT: Same as close-up view — cube larger, grid nearly out of frame. "
+        "PREDICT: Same as close-up view -- cube larger, grid nearly out of frame. "
         "Position z should be near -2.0."
     ))
 
@@ -245,7 +245,7 @@ def run_scenarios() -> str:
         "Position z should be near -8.0."
     ))
 
-    # 4. Control: yaw left (←) x20
+    # 4. control: yaw left (<-) x20
     p_yaw = Player3D(**base)
     for _ in range(20): p_yaw.yaw(0.04)
     cases.append((
@@ -255,7 +255,7 @@ def run_scenarios() -> str:
         "Forward vector x-component should be negative (pointing left)."
     ))
 
-    # 5. Control: yaw right (→) x20
+    # 5. control: yaw right (->) x20
     p_yaw_r = Player3D(**base)
     for _ in range(20): p_yaw_r.yaw(-0.04)
     cases.append((
@@ -265,7 +265,7 @@ def run_scenarios() -> str:
         "Forward x-component should be positive."
     ))
 
-    # 6. Control: pitch up (↑) x20
+    # 6. control: pitch up (^) x20
     p_pitch_u = Player3D(**base)
     for _ in range(20): p_pitch_u.pitch(0.04)
     cases.append((
@@ -275,7 +275,7 @@ def run_scenarios() -> str:
         "Forward y-component should be positive. Grid hidden below horizon."
     ))
 
-    # 7. Control: pitch down (↓) x20
+    # 7. control: pitch down (v) x20
     p_pitch_d = Player3D(**base)
     for _ in range(20): p_pitch_d.pitch(-0.04)
     cases.append((
@@ -291,7 +291,7 @@ def run_scenarios() -> str:
     cases.append((
         "control: roll right x20 (~0.8 rad)",
         p_roll,
-        "PREDICT: Cube rotated counter-clockwise in frame (horizon tilts — left side up, right side down). "
+        "PREDICT: Cube rotated counter-clockwise in frame (horizon tilts -- left side up, right side down). "
         "Up vector x-component should be positive (tilted to the right, +x). Crosshair still centred."
     ))
 
@@ -326,7 +326,7 @@ def run_scenarios() -> str:
         "Cube off to the right, closer than initial. Position x should be negative."
     ))
 
-    # 12. Combined roll + thrust: roll right 45° then thrust — does camera move in rolled direction?
+    # 12. combined roll + thrust: roll right 45 deg then thrust -- does camera move in rolled direction?
     import math
     p_roll_thrust = Player3D(**base)
     for _ in range(20): p_roll_thrust.roll(0.04)   # ~0.8 rad roll right
@@ -340,12 +340,12 @@ def run_scenarios() -> str:
         "Position z should increase by ~1.5; x,y unchanged. Cube appears counter-clockwise rotated and slightly closer."
     ))
 
-    # 13. Full 360° yaw — returns to start
+    # 13. full 360 deg yaw -- returns to start
     p_360 = Player3D(**base)
-    steps = 157   # 157 * 0.04 = 6.28 ≈ 2π
+    steps = 157   # 157 * 0.04 = 6.28 ~ 2pi
     for _ in range(steps): p_360.yaw(0.04)
     cases.append((
-        "control: full 360° yaw (157 steps * 0.04 rad)",
+        "control: full 360 deg yaw (157 steps * 0.04 rad)",
         p_360,
         "PREDICT: Camera back to near-initial orientation. fwd should be ~(0,0,1). "
         "up should be ~(0,1,0). Cube near-centred. State numerical error < 0.01."
@@ -353,9 +353,9 @@ def run_scenarios() -> str:
 
     # 14. Pitch to vertical (looking straight up)
     p_vert = Player3D(**base)
-    for _ in range(40): p_vert.pitch(0.04)   # ~1.57 rad ≈ 90°
+    for _ in range(40): p_vert.pitch(0.04)   # ~1.57 rad ~ 90 deg
     cases.append((
-        "control: pitch up x40 (~90°, looking straight up)",
+        "control: pitch up x40 (~90 deg, looking straight up)",
         p_vert,
         "PREDICT: Camera looking nearly straight up. fwd.y should be ~+1.0. "
         "Cube and grid both have negative z_cam (behind camera), clipped. "
@@ -364,9 +364,9 @@ def run_scenarios() -> str:
 
     # 15. Pitch to vertical downward
     p_vert_d = Player3D(**base)
-    for _ in range(40): p_vert_d.pitch(-0.04)  # ~-1.57 rad ≈ -90°
+    for _ in range(40): p_vert_d.pitch(-0.04)  # ~-1.57 rad ~ -90 deg
     cases.append((
-        "control: pitch down x40 (~90°, looking straight down)",
+        "control: pitch down x40 (~90 deg, looking straight down)",
         p_vert_d,
         "PREDICT: Camera looking nearly straight down. fwd.y should be ~-1.0. "
         "Cube and grid both project very far off-screen (camera.up is now +z, grid extends radially). "
@@ -376,7 +376,7 @@ def run_scenarios() -> str:
     # 16. Multiple objects at different depths: camera moved back to z=-10
     p_far = Player3D(position=(0, 0, -10), forward=(0, 0, 1), up=(0, 1, 0))
     cases.append((
-        "static: far back (z=-10) — depth ordering check",
+        "static: far back (z=-10) -- depth ordering check",
         p_far,
         "PREDICT: Cube very small, centred. Grid lines spread very tightly near horizon. "
         "Axis markers tiny. Smaller cube = farther = correct depth ordering."
@@ -405,14 +405,14 @@ def run_scenarios() -> str:
         "Cube surrounds camera (inside view). fwd, up unchanged. Numerically stable."
     ))
 
-    # 19. Numerical stability: 1000 small yaw steps — does up drift?
+    # 19. numerical stability: 1000 small yaw steps -- does up drift?
     p_drift = Player3D(**base)
-    for _ in range(1000): p_drift.yaw(0.00628)   # ~1000 * 0.00628 ≈ 2π
+    for _ in range(1000): p_drift.yaw(0.00628)   # ~1000 * 0.00628 ~ 2pi
     cases.append((
-        "control: numerical stability — 1000 small yaw steps (~2π total)",
+        "control: numerical stability -- 1000 small yaw steps (~2pi total)",
         p_drift,
-        "PREDICT: Camera back near initial orientation after ~360°. "
-        "up should be very close to (0,1,0) — drift should be < 0.001. "
+        "PREDICT: Camera back near initial orientation after ~360 deg. "
+        "up should be very close to (0,1,0) -- drift should be < 0.001. "
         "fwd should be ~(0,0,1). Crosshair at centre."
     ))
 
@@ -423,7 +423,7 @@ def run_scenarios() -> str:
         fwd = player.forward
         up  = player.up
         actual_info = (
-            f"ACTUAL state — pos: ({pos[0]:+.3f}, {pos[1]:+.3f}, {pos[2]:+.3f})  "
+            f"ACTUAL state -- pos: ({pos[0]:+.3f}, {pos[1]:+.3f}, {pos[2]:+.3f})  "
             f"fwd: ({fwd[0]:+.3f}, {fwd[1]:+.3f}, {fwd[2]:+.3f})  "
             f"up: ({up[0]:+.3f}, {up[1]:+.3f}, {up[2]:+.3f})"
         )

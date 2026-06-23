@@ -15,7 +15,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # =============================================================================
 
-"""vcgame — entry point."""
+"""vcgame -- entry point."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _fix_negative_args() -> None:
 def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     p = argparse.ArgumentParser(
         prog="vcgame",
-        description="Navigate a simplicial fan on S².",
+        description="Navigate a simplicial fan on S2.",
     )
     p.add_argument(
         "--shape",
@@ -99,7 +99,7 @@ def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         type=int,
         default=0,
         metavar="ID",
-        help="Reflexive polytope id 0–4318 for --shape reflexive (default: 0).",
+        help="Reflexive polytope id 0-4318 for --shape reflexive (default: 0).",
     )
     p.add_argument(
         "--pos",

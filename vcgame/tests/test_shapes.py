@@ -15,7 +15,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # =============================================================================
 
-"""Tests for shapes/ — vector generation."""
+"""Tests for shapes/ -- vector generation."""
 from __future__ import annotations
 
 import pytest
@@ -41,7 +41,7 @@ def _all_shapes_vectors():
 
 
 # ---------------------------------------------------------------------------
-# get_vectors — shared structural checks (all non-network shapes)
+# get_vectors -- shared structural checks (all non-network shapes)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("vectors", _all_shapes_vectors())
@@ -113,7 +113,7 @@ def test_cube_count_formula(n):
 
 @pytest.mark.parametrize("n", [3, 5, 7])
 def test_cube_boundary(n):
-    """Every vector has at least one component equal to ±(n-1)/2."""
+    """Every vector has at least one component equal to +/-(n-1)/2."""
     half = (n - 1) // 2
     for v in cube_vectors(n):
         assert any(abs(x) == half for x in v)
@@ -200,7 +200,7 @@ def test_trunc_oct_count():
 
 
 def test_trunc_oct_values():
-    """Every vector is a permutation of (0, ±1, ±2)."""
+    """Every vector is a permutation of (0, +/-1, +/-2)."""
     target = {0, 1, -1, 2, -2}
     for v in trunc_oct_vectors():
         assert set(map(abs, v)) == {0, 1, 2}, f"unexpected vector {v}"

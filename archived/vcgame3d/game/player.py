@@ -1,8 +1,8 @@
 """
 Player classes for vcgame3d.
 
-Player3D  — flat R³ flight (used for the reference cube scene).
-Player4D  — geodesic flight on S³ (used for fan scenes).
+Player3D  -- flat R3 flight (used for the reference cube scene).
+Player4D  -- geodesic flight on S3 (used for fan scenes).
             Position is a unit 4-vector; movement follows great-circle arcs so
             going forward long enough returns you to your starting point.
 """
@@ -59,7 +59,7 @@ class Player3D:
         self._right = np.cross(self._up, self._fwd)
 
     def pitch(self, angle: float) -> None:
-        """Nose up (+) / down (−)."""
+        """Nose up (+) / down (-)."""
         c, s = np.cos(angle), np.sin(angle)
         fwd = c * self._fwd + s * self._up
         up  = -s * self._fwd + c * self._up
@@ -67,13 +67,13 @@ class Player3D:
         self._reorthogonalize()
 
     def yaw(self, angle: float) -> None:
-        """Nose left (+) / right (−)."""
+        """Nose left (+) / right (-)."""
         c, s = np.cos(angle), np.sin(angle)
         self._fwd = c * self._fwd - s * self.right
         self._reorthogonalize()
 
     def roll(self, angle: float) -> None:
-        """Roll right (+) / left (−)."""
+        """Roll right (+) / left (-)."""
         c, s = np.cos(angle), np.sin(angle)
         self._up = c * self._up + s * self.right
         self._reorthogonalize()
@@ -95,16 +95,16 @@ class Player3D:
 
 
 class Player4D:
-    """Player living on S³ with geodesic (great-circle) movement.
+    """Player living on S3 with geodesic (great-circle) movement.
 
     State
     -----
-    _pos4d   : unit 4-vector — position on S³
-    _fwd4d   : unit 4-vector in T_{pos4d}S³ — forward tangent
-    _right4d : unit 4-vector in T_{pos4d}S³ — right tangent
-    _up4d    : unit 4-vector in T_{pos4d}S³ — up tangent
+    _pos4d   : unit 4-vector -- position on S3
+    _fwd4d   : unit 4-vector in T_{pos4d}S3 -- forward tangent
+    _right4d : unit 4-vector in T_{pos4d}S3 -- right tangent
+    _up4d    : unit 4-vector in T_{pos4d}S3 -- up tangent
 
-    The four vectors form an orthonormal basis of R⁴.
+    The four vectors form an orthonormal basis of R4.
 
     Movement
     --------
@@ -115,7 +115,7 @@ class Player4D:
     Rendering
     ---------
     _pos / _fwd / _right / _up  are 3D vectors computed from the numerical
-    Jacobian of the supplied S³→R³ projection callable, Gram-Schmidt
+    Jacobian of the supplied S3->R3 projection callable, Gram-Schmidt
     orthogonalised so the renderer gets a proper camera frame.
     """
 
@@ -130,7 +130,7 @@ class Player4D:
         fwd4d:   np.ndarray,
         right4d: np.ndarray,
         up4d:    np.ndarray,
-        project,            # callable S³ → R³
+        project,            # callable S3 -> R3
         speed: float = 0.05,
     ):
         self._pos4d   = np.array(pos4d,   dtype=float)
@@ -147,7 +147,7 @@ class Player4D:
 
     def _ortho4d_inplace(self) -> None:
         """Gram-Schmidt orthonormalize {pos4d, fwd4d, right4d, up4d} in-place.
-        Does NOT touch the dirty flag — callers manage it."""
+        Does NOT touch the dirty flag -- callers manage it."""
         p = self._pos4d / np.linalg.norm(self._pos4d)
 
         f = self._fwd4d - np.dot(self._fwd4d, p) * p
@@ -180,7 +180,7 @@ class Player4D:
             n = np.linalg.norm(d)
             return d / n if n > 1e-12 else d
 
-        # Numerical partial derivatives, then Gram-Schmidt in R³
+        # numerical partial derivatives, then Gram-Schmidt in R3
         f = jac(self._fwd4d)
         n = np.linalg.norm(f); f = f / n if n > 1e-12 else f
 
@@ -221,8 +221,8 @@ class Player4D:
     def up(self)       -> np.ndarray: return self._get()[3].copy()
 
     # ── geodesic movement ─────────────────────────────────────────────
-    # Thrust along axis v:  new_pos = cos(dt)·pos + sin(dt)·v
-    #                       new_v   = −sin(dt)·pos + cos(dt)·v
+    # thrust along axis v:  new_pos = cos(dt)*pos + sin(dt)*v
+    #                       new_v   = -sin(dt)*pos + cos(dt)*v
     # Other tangent axes are unchanged (parallel transport).
 
     def thrust(self, scale: float = 1.0) -> None:
@@ -246,21 +246,21 @@ class Player4D:
     # ── rotations (tangent-space only, pos4d unchanged) ──────────────
 
     def pitch(self, angle: float) -> None:
-        """Nose up (+) / down (−)."""
+        """Nose up (+) / down (-)."""
         c, s = np.cos(angle), np.sin(angle)
         f, u = self._fwd4d, self._up4d
         self._fwd4d, self._up4d = c*f + s*u, -s*f + c*u
         self._dirty = True
 
     def yaw(self, angle: float) -> None:
-        """Nose left (+) / right (−)."""
+        """Nose left (+) / right (-)."""
         c, s = np.cos(angle), np.sin(angle)
         f, r = self._fwd4d, self._right4d
         self._fwd4d, self._right4d = c*f - s*r, s*f + c*r
         self._dirty = True
 
     def roll(self, angle: float) -> None:
-        """Roll right (+) / left (−)."""
+        """Roll right (+) / left (-)."""
         c, s = np.cos(angle), np.sin(angle)
         r, u = self._right4d, self._up4d
         self._right4d, self._up4d = c*r - s*u, s*r + c*u

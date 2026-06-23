@@ -16,7 +16,7 @@
 # =============================================================================
 
 """
-Curses-based ASCII renderer for the fan and player position on S².
+Curses-based ASCII renderer for the fan and player position on S2.
 
 Rendering uses a backward (ray-casting) approach: for each screen pixel a
 line is fired from the screen plane inward along -p, and the first cone face
@@ -50,14 +50,14 @@ _SUN_DISTANCE = 20.0
 _SUN_REF      = np.array([1.0, 1.0, 1.0])
 
 _COLOR_LABELS  = ("wire", "radius", "sun")
-# Symbol styles: (label, ramp_string).  Brightness t∈[0,1] indexes the ramp.
+# Symbol styles: (label, ramp_string).  Brightness t in [0,1] indexes the ramp.
 _SYMBOL_STYLES: tuple = (
     ("block",    "\u2591\u2592\u2593\u2588"),            # ░▒▓█
     ("braille",  "\u2801\u2803\u2807\u2847\u28c7\u28f7\u28ff"),  # ⠁⠃⠇⡇⣇⣷⣿
     ("quadrant", " \u2596\u259a\u2599\u2588"),           # (sp)▖▚▙█
     ("vert",     "\u258f\u258e\u258d\u258c\u258b\u258a\u2589\u2588"),  # ▏▎▍▌▋▊▉█
     ("horiz",    "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"),  # ▁▂▃▄▅▆▇█
-    ("digits",   "0123456789"),                          # 0–9
+    ("digits",   "0123456789"),                          # 0-9
 )
 _M3_HEIGHT     = 0.003  # player elevation above current face (flashlight mode)
 _M3_THETA_MAX  = 55.0   # flashlight cone half-angle from heading, degrees
@@ -81,7 +81,7 @@ _HUD_ROWS = 2  # number of rows reserved at screen bottom for HUD
 _FOV_DIST: float = 1.0
 
 # Halfspace containment tolerance.  A point is considered inside a cone wall
-# if  h · x  >=  -_HALFSPACE_TOL.  Used identically in the sphere path and
+# if  h . x  >=  -_HALFSPACE_TOL.  Used identically in the sphere path and
 # the flat/numba path so the two modes never disagree at cone boundaries.
 _HALFSPACE_TOL: float = 1e-9
 
@@ -234,7 +234,7 @@ def _ray_intersects_triangle(
     v1: np.ndarray,
     v2: np.ndarray,
 ) -> float | None:
-    """Möller–Trumbore ray–triangle intersection.
+    """Möller-Trumbore ray-triangle intersection.
 
     Parameters
     ----------
@@ -288,7 +288,7 @@ def _compute_p_surface(
     Parameters
     ----------
     p : np.ndarray
-        Unit viewing direction (player position on S²).
+        Unit viewing direction (player position on S2).
     v0 : np.ndarray
         Any vertex of the current cone.
     face_normal : np.ndarray
@@ -297,8 +297,8 @@ def _compute_p_surface(
     Returns
     -------
     np.ndarray
-        3D point on the face plane: ``λ * p`` where
-        ``λ = dot(v0, face_normal) / dot(p, face_normal)``.
+        3D point on the face plane: ``lambda * p`` where
+        ``lambda = dot(v0, face_normal) / dot(p, face_normal)``.
     """
     denom = float(np.dot(p, face_normal))
     if abs(denom) < 1e-12:
@@ -321,8 +321,8 @@ def _pixel_row_positions(
 
     The screen plane is centred at ``screen_center = p_surface + FOV_DIST*p``.
     Each pixel at column ``c`` is offset by scene-unit distances along ``e1``
-    (up) and ``e2`` (right).  Columns are scaled by 2× relative to rows to
-    compensate for terminal character cells being ~2× taller than wide,
+    (up) and ``e2`` (right).  Columns are scaled by 2x relative to rows to
+    compensate for terminal character cells being ~2x taller than wide,
     preserving circular aspect ratio.
 
     Parameters
@@ -345,7 +345,7 @@ def _pixel_row_positions(
     Returns
     -------
     np.ndarray
-        Shape ``(N, 3)`` — one 3D position per column.
+        Shape ``(N, 3)`` -- one 3D position per column.
     """
     s     = (cy - r) / scale                   # scene units along e1
     u_arr = (c_arr - cx) / (scale * 2.0)       # scene units along e2
@@ -358,7 +358,7 @@ def _sphere_row_hits(
     pixel_row: np.ndarray,
     p: np.ndarray,
 ) -> np.ndarray:
-    """Solve ``|pixel_row[i] - t*p|² = 1`` for each pixel.
+    """Solve ``|pixel_row[i] - t*p|^2 = 1`` for each pixel.
 
     Finds where the line from ``pixel_row[i]`` in direction ``-p`` hits the
     unit sphere.  Takes the smallest positive root.
@@ -373,11 +373,11 @@ def _sphere_row_hits(
     Returns
     -------
     np.ndarray
-        Shape ``(N,)`` — intersection parameter ``t > 0``, or ``inf`` if the
+        Shape ``(N,)`` -- intersection parameter ``t > 0``, or ``inf`` if the
         line misses the unit sphere.
     """
-    # Expanding |pixel - t*p|² = 1 with |p|=1:
-    # t² - 2·dot(pixel,p)·t + (|pixel|²-1) = 0
+    # Expanding |pixel - t*p|^2 = 1 with |p|=1:
+    # t^2 - 2*dot(pixel,p)*t + (|pixel|^2-1) = 0
     b      = pixel_row @ p                           # (N,)
     c_coef = np.sum(pixel_row ** 2, axis=1) - 1.0   # (N,)
     disc   = b * b - c_coef                          # (N,) discriminant
@@ -388,7 +388,7 @@ def _sphere_row_hits(
     sq     = np.sqrt(np.maximum(0.0, disc[valid]))
     t1     = b[valid] - sq
     t2     = b[valid] + sq
-    # Take smallest positive root; fall back to larger root if t1 ≤ 0.
+    # Take smallest positive root; fall back to larger root if t1 <= 0.
     t_best = np.where(t1 > 1e-6, t1, np.where(t2 > 1e-6, t2, np.inf))
     result[valid] = t_best
     return result
@@ -606,7 +606,7 @@ def _shadow_blocked_all(
     skip_idx: np.ndarray,
     eps:      float = 1e-3,
 ) -> np.ndarray:
-    """Shadow test for all hit pixels at once via Möller–Trumbore.
+    """Shadow test for all hit pixels at once via Möller-Trumbore.
 
     Parameters
     ----------
@@ -618,7 +618,7 @@ def _shadow_blocked_all(
 
     Returns
     -------
-    shadowed : (N,) bool  — True if the path to the light is blocked
+    shadowed : (N,) bool  -- True if the path to the light is blocked
     """
     N = hit_pos.shape[0]
     T = v0s.shape[0]
@@ -698,13 +698,13 @@ def _hit_pixels_numba(
     all_pix : (N, 3)   ray origins (screen pixel positions)
     N_mat   : (K, 3)   facet plane normals (front-facing cones only)
     c_vec   : (K,)     plane offsets  dot(n_k, v0_k)
-    H_mat   : (K, 3, 3) halfspace matrices — rows are oriented edge normals
+    H_mat   : (K, 3, 3) halfspace matrices -- rows are oriented edge normals
     d       : (3,)     shared ray direction (-p)
 
     Returns
     -------
-    best_t  : (N,) float64  — closest hit distance, inf if no hit
-    hit_idx : (N,) int32    — index into the K front-facing cones, -1 if no hit
+    best_t  : (N,) float64  -- closest hit distance, inf if no hit
+    hit_idx : (N,) int32    -- index into the K front-facing cones, -1 if no hit
     """
     N = all_pix.shape[0]
     K = N_mat.shape[0]
@@ -756,7 +756,7 @@ def _hit_pixels_numba(
 # ---------------------------------------------------------------------------
 
 class Renderer:
-    """Curses-based backward renderer for a fan and player position on S².
+    """Curses-based backward renderer for a fan and player position on S2.
 
     For each screen pixel a line is fired inward along -p; the first cone face
     hit is shaded and written to the terminal.  Edges are drawn on top via
@@ -802,7 +802,7 @@ class Renderer:
         Parameters
         ----------
         player_pos : np.ndarray
-            Unit direction vector of the player's angular position on S².
+            Unit direction vector of the player's angular position on S2.
         player_heading : np.ndarray
             Unit tangent vector of the player's heading.
         current_cone : tuple[int, ...]
@@ -1049,7 +1049,7 @@ class Renderer:
 
             else:
                 # Flat mode: build all pixel positions at once, then one cone
-                # loop over all R*C pixels (replaces 38 row iterations × N cone
+                # loop over all R*C pixels (replaces 38 row iterations x N cone
                 # iterations with N cone iterations over all pixels together).
                 _R = rows - _HUD_ROWS
                 _C = cols - 1
@@ -1057,7 +1057,7 @@ class Renderer:
                 _c_arr = np.arange(_C, dtype=float)
                 _s_arr = (cy - _r_arr) / scale
                 _u_arr = (_c_arr - cx) / (scale * 2.0)
-                # (R, 3) row centres, then broadcast to (R, C, 3) → (R*C, 3)
+                # (R, 3) row centres, then broadcast to (R, C, 3) -> (R*C, 3)
                 _row_centers = screen_center + _s_arr[:, None] * e1_new[None, :]
                 _all_pix = (
                     _row_centers[:, None, :]
@@ -1072,7 +1072,7 @@ class Renderer:
                     raise RuntimeError(
                         f"_hit_pixels_numba returned {int(_neg_hits.sum())} negative-t "
                         f"hits (min={float(_best_t[_neg_hits].min()):.4f}). "
-                        "Screen plane is inside the polytope — increase screen distance."
+                        "Screen plane is inside the polytope -- increase screen distance."
                     )
                 # map front-facing indices back to all_cones_list indices
                 _hit_idx = np.full(_R * _C, -1, dtype=np.int32)
@@ -1091,11 +1091,11 @@ class Renderer:
                     _hm = _hit_idx.reshape(_R, _C)
                     _pdbg_lines = []
                     _pdbg_lines.append(
-                        "── PIXEL HIT MAP (char=face, ·=miss) ──"
+                        "── PIXEL HIT MAP (char=face, .=miss) ──"
                     )
                     for _pr in range(0, _R, 2):
                         _pdbg_lines.append("".join(
-                            "·" if _hm[_pr, _pc] < 0
+                            "." if _hm[_pr, _pc] < 0
                             else _PCHARS[_hm[_pr, _pc] % len(_PCHARS)]
                             for _pc in range(_C)
                         ))
@@ -1345,7 +1345,7 @@ class Renderer:
             _depth_buf_raw = _hit_idx_w
 
         # ── depth buffer for edge occlusion ──────────────────────────────────
-        # Maps (r, c) → index into all_cones_list, or -1 if no face rendered.
+        # Maps (r, c) -> index into all_cones_list, or -1 if no face rendered.
         _depth_buf: np.ndarray | None = (
             _depth_buf_raw.reshape(rows - _HUD_ROWS, cols - 1)
             if _depth_buf_raw is not None
@@ -1359,8 +1359,8 @@ class Renderer:
             coord = _project(ray(label), view_dir, e1_new, e2_new)
             if coord is None:
                 return None
-            # Columns scaled by 2× to compensate for terminal character cells
-            # being ~2× taller than wide, preserving circular aspect ratio.
+            # Columns scaled by 2x to compensate for terminal character cells
+            # being ~2x taller than wide, preserving circular aspect ratio.
             col = cx + int(round(coord[0] * scale * 2))
             row = cy - int(round(coord[1] * scale))
             return (row, col)
@@ -1531,8 +1531,8 @@ class Renderer:
         lit_attr   = (curses.color_pair(2) | curses.A_BOLD
                       if flashlight else curses.color_pair(4))
 
-        # ── HUD row 0 (rows-2): [q]uit  cone=…  [S]sphere  [1/2]fill  [D]el  [A]agent  [P]dbg
-        # ── HUD row 1 (rows-1):          facet=…  [6-0]sym  [F]lash  [L]fix
+        # ── HUD row 0 (rows-2): [q]uit  cone=...  [S]sphere  [1/2]fill  [D]el  [A]agent  [P]dbg
+        # ── HUD row 1 (rows-1):          facet=...  [6-0]sym  [F]lash  [L]fix
         try:
             _blank = " " * (cols - 1)
             for _hr in range(_HUD_ROWS):

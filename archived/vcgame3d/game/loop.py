@@ -29,11 +29,11 @@ def run(fan=None, n_subdivisions: int = 4, proj: str = "spherical") -> None:
     Parameters
     ----------
     fan : Fan-like object, optional
-        Fan to render.  None → reference cube/grid scene.
+        Fan to render.  None -> reference cube/grid scene.
     n_subdivisions : int
         Arc subdivision steps per fan edge.
     proj : str
-        Projection from S³ → R³.  "spherical" (default) uses hyperspherical
+        Projection from S3 -> R3.  "spherical" (default) uses hyperspherical
         coordinates (no distortion, no poles); "stereo" uses stereographic.
     """
     os.environ.setdefault("ESCDELAY", "25")
@@ -74,7 +74,7 @@ def _main(stdscr, fan=None, n_subdivisions: int = 4, proj: str = "spherical") ->
 
         start_pos4d = inv_project(start_pos3d)
 
-        # fwd4d: tangent direction toward the fan centroid on S³
+        # fwd4d: tangent direction toward the fan centroid on S3
         centroid4d = inv_project(centroid)
         tangent = centroid4d - np.dot(centroid4d, start_pos4d) * start_pos4d
         tn = np.linalg.norm(tangent)
@@ -215,7 +215,7 @@ def _main(stdscr, fan=None, n_subdivisions: int = 4, proj: str = "spherical") ->
             highlighted_pairs = None
             face_arc_world_pts = None
             if cone_finder is not None:
-                p4d  = player._pos4d   # direct S³ position — no round-trip error
+                p4d  = player._pos4d   # direct S3 position -- no round-trip error
                 cone = cone_finder(p4d)
                 if cone is not None:
                     from itertools import combinations as _comb

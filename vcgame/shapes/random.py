@@ -20,7 +20,7 @@ Generate integer vectors from the surface of the convex hull of a set
 of random lattice points whose convex hull strictly contains the origin.
 
 If a sampled set does not strictly contain the origin (i.e. the positive
-span is not all of R³), the set is discarded and resampled.
+span is not all of R3), the set is discarded and resampled.
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def _surface_lattice_points(
     hi  = np.ceil (arr.max(axis=0)).astype(int)
 
     result: set[tuple[int, ...]] = set()
-    eqs = hull.equations  # (nfacets, 4): n·x + d ≤ 0 for interior/surface
+    eqs = hull.equations  # (nfacets, 4): n.x + d <= 0 for interior/surface
 
     for row in eqs:
         n, d = row[:3], float(row[3])
@@ -98,8 +98,8 @@ def random_vectors(
     """Sample random integer vectors whose convex hull strictly contains origin.
 
     Samples ``n_vectors`` distinct non-zero integer vectors from
-    [−max_coord, max_coord]³, checks that the origin lies in the strict
-    interior of their convex hull (equivalently, the positive span is R³),
+    [-max_coord, max_coord]^3, checks that the origin lies in the strict
+    interior of their convex hull (equivalently, the positive span is R3),
     and retries if not. Returns all non-origin lattice points on the hull
     surface.
 

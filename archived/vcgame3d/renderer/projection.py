@@ -1,10 +1,10 @@
 """
-4D → 3D projection pipeline.
+4D -> 3D projection pipeline.
 
 Coordinate flow:
-    integer lattice vectors (Z⁴)
-    → normalize to S³          via normalize()
-    → project S³ → R³          via a projection callable
+    integer lattice vectors (Z4)
+    -> normalize to S3          via normalize()
+    -> project S3 -> R3          via a projection callable
 
 Available projections
 ---------------------
@@ -19,7 +19,7 @@ import numpy as np
 # ── low-level geometry ────────────────────────────────────────────────
 
 def normalize(v: np.ndarray) -> np.ndarray:
-    """Normalize a non-zero vector to the unit 3-sphere S³.
+    """Normalize a non-zero vector to the unit 3-sphere S3.
 
     Parameters
     ----------
@@ -28,7 +28,7 @@ def normalize(v: np.ndarray) -> np.ndarray:
     Returns
     -------
     np.ndarray, shape (4,)
-        Unit vector on S³.
+        Unit vector on S3.
     """
     v = np.asarray(v, dtype=float)
     n = np.linalg.norm(v)
@@ -38,27 +38,27 @@ def normalize(v: np.ndarray) -> np.ndarray:
 
 
 def slerp(p0: np.ndarray, p1: np.ndarray, t: float) -> np.ndarray:
-    """Spherical linear interpolation between two points on S³.
+    """Spherical linear interpolation between two points on S3.
 
     Parameters
     ----------
     p0, p1 : np.ndarray, shape (4,)
-        Unit vectors on S³.
+        Unit vectors on S3.
     t : float
-        Interpolation parameter. t=0 → p0, t=1 → p1.
+        Interpolation parameter. t=0 -> p0, t=1 -> p1.
 
     Returns
     -------
     np.ndarray, shape (4,)
-        Unit vector on S³ at parameter t.
+        Unit vector on S3 at parameter t.
 
     Notes
     -----
-    Falls back to normalised lerp when p0 ≈ ±p1 (collinear case).
+    Falls back to normalised lerp when p0 ~ +/-p1 (collinear case).
     """
     dot = float(np.clip(np.dot(p0, p1), -1.0, 1.0))
     if abs(dot) > 1.0 - 1e-10:
-        # Nearly (anti)parallel — normalised linear fallback
+        # nearly (anti)parallel -- normalised linear fallback
         return normalize((1.0 - t) * p0 + t * p1)
     theta = np.arccos(dot)
     s = np.sin(theta)
@@ -66,12 +66,12 @@ def slerp(p0: np.ndarray, p1: np.ndarray, t: float) -> np.ndarray:
 
 
 def edge_points(p0: np.ndarray, p1: np.ndarray, n: int) -> list[np.ndarray]:
-    """Sample n+1 points along the great-circle arc from p0 to p1 on S³.
+    """Sample n+1 points along the great-circle arc from p0 to p1 on S3.
 
     Parameters
     ----------
     p0, p1 : np.ndarray, shape (4,)
-        Unit vectors on S³ (endpoints).
+        Unit vectors on S3 (endpoints).
     n : int
         Number of segments (n+1 points, including both endpoints).
 
@@ -101,22 +101,22 @@ def _make_stereo_basis(pole: np.ndarray) -> np.ndarray:
 def stereographic_proj(
     pole: np.ndarray | None = None,
 ) -> "Callable[[np.ndarray], np.ndarray]":
-    """Return a stereographic projection S³ → R³ from the given pole.
+    """Return a stereographic projection S3 -> R3 from the given pole.
 
-    Projects from `pole` onto the equatorial hyperplane {x : x·pole = 0},
+    Projects from `pole` onto the equatorial hyperplane {x : x.pole = 0},
     returning 3D coordinates in an orthonormal basis for that hyperplane.
 
     Parameters
     ----------
     pole : array-like, shape (4,), optional
-        A non-zero vector indicating the projection pole on S³.
+        A non-zero vector indicating the projection pole on S3.
         Defaults to (0, 0, 0, 1).
 
     Returns
     -------
     project : callable
-        project(p) maps a unit 4-vector on S³ to a 3-vector in R³.
-        Points near the pole map far from the R³ origin.
+        project(p) maps a unit 4-vector on S3 to a 3-vector in R3.
+        Points near the pole map far from the R3 origin.
 
     Notes
     -----
@@ -131,7 +131,7 @@ def stereographic_proj(
     _basis = _make_stereo_basis(_pole)
 
     def project(p: np.ndarray) -> np.ndarray:
-        """Map a unit 4-vector on S³ to R³ via stereographic projection."""
+        """Map a unit 4-vector on S3 to R3 via stereographic projection."""
         p = np.asarray(p, dtype=float)
         dot = float(np.dot(p, _pole))
         denom = 1.0 - dot
@@ -146,9 +146,9 @@ def stereographic_proj(
 def inverse_stereographic_proj(
     pole: np.ndarray | None = None,
 ) -> "Callable[[np.ndarray], np.ndarray]":
-    """Return the inverse of stereographic_proj: R³ → S³.
+    """Return the inverse of stereographic_proj: R3 -> S3.
 
-    Maps a 3-vector back to the unit 4-vector on S³ it came from.
+    Maps a 3-vector back to the unit 4-vector on S3 it came from.
     Use the same pole as the corresponding stereographic_proj call.
     """
     if pole is None:
@@ -159,7 +159,7 @@ def inverse_stereographic_proj(
     _basis = _make_stereo_basis(_pole)   # shape (3, 4)
 
     def inverse(x: np.ndarray) -> np.ndarray:
-        """Map a 3-vector in R³ back to a unit 4-vector on S³."""
+        """Map a 3-vector in R3 back to a unit 4-vector on S3."""
         x    = np.asarray(x, dtype=float)
         v4d  = _basis.T @ x          # 4D vector in the equatorial hyperplane
         r2   = float(np.dot(x, x))
@@ -174,16 +174,16 @@ def inverse_stereographic_proj(
 
 
 def hyperspherical_proj() -> "Callable[[np.ndarray], np.ndarray]":
-    """Project S³ → R³ via hyperspherical coordinates (drop r = 1).
+    """Project S3 -> R3 via hyperspherical coordinates (drop r = 1).
 
-    For (x₁, x₂, x₃, x₄) ∈ S³ returns (χ, ψ, φ) where:
+    For (x1, x2, x3, x4) in S3 returns (chi, psi, phi) where:
 
-        χ = arctan2(√(x₂²+x₃²+x₄²), x₁)  ∈ [0, π]
-        ψ = arctan2(√(x₃²+x₄²),      x₂)  ∈ [0, π]
-        φ = arctan2(x₄,               x₃)  ∈ (−π, π]
+        chi = arctan2(sqrt(x2^2+x3^2+x4^2), x1)  in [0, pi]
+        psi = arctan2(sqrt(x3^2+x4^2),      x2)  in [0, pi]
+        phi = arctan2(x4,               x3)  in (-pi, pi]
 
-    Unlike stereographic projection there is no pole at infinity — the
-    map is defined (up to a measure-zero singularity set) everywhere on S³.
+    Unlike stereographic projection there is no pole at infinity -- the
+    map is defined (up to a measure-zero singularity set) everywhere on S3.
     Singularities (zero denominators) return 0 for the undefined angle.
     """
     def project(p: np.ndarray) -> np.ndarray:
@@ -200,11 +200,11 @@ def hyperspherical_proj() -> "Callable[[np.ndarray], np.ndarray]":
 
 
 def inverse_hyperspherical_proj() -> "Callable[[np.ndarray], np.ndarray]":
-    """Exact inverse of hyperspherical_proj: R³ → S³.
+    """Exact inverse of hyperspherical_proj: R3 -> S3.
 
-    Given (χ, ψ, φ) returns the unit 4-vector:
+    Given (chi, psi, phi) returns the unit 4-vector:
 
-        (cos χ,  sin χ cos ψ,  sin χ sin ψ cos φ,  sin χ sin ψ sin φ)
+        (cos chi,  sin chi cos psi,  sin chi sin psi cos phi,  sin chi sin psi sin phi)
     """
     def inverse(x: np.ndarray) -> np.ndarray:
         x = np.asarray(x, dtype=float)

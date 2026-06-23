@@ -20,7 +20,7 @@ One-time script to fetch all 4319 reflexive polytope vector sets and save
 them to reflexive_cache.json in this directory.
 
 Data source: http://coates.ma.ic.ac.uk/3DReflexivePolytopes/
-(Coates–Corti–Galkin–Golyshev–Kasprzyk 3D Reflexive Polytopes database)
+(Coates-Corti-Galkin-Golyshev-Kasprzyk 3D Reflexive Polytopes database)
 
 Run once from the repo root:
     python -m shapes._fetch_reflexive_cache
@@ -50,7 +50,7 @@ def main() -> None:
     cache: dict[str, list] = {}
     errors: list[str] = []
 
-    print(f"Fetching {N_POLYTOPES} polytopes with {_WORKERS} workers…")
+    print(f"Fetching {N_POLYTOPES} polytopes with {_WORKERS} workers...")
 
     with ThreadPoolExecutor(max_workers=_WORKERS) as pool:
         futures = {pool.submit(_fetch, pid): pid for pid in range(N_POLYTOPES)}

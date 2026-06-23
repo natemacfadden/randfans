@@ -5,7 +5,7 @@
 
 The algorithm starts from a random unimodular triangle, then iteratively extends
 the triangulation by choosing an exterior edge of the current simplicial complex and
-finding a compatible vertex — one that forms a unit-area triangle and whose connecting
+finding a compatible vertex -- one that forms a unit-area triangle and whose connecting
 edges don't cross any existing edge. Repeating with different seeds samples the space
 of fine triangulations.
 

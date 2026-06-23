@@ -31,7 +31,7 @@ _EDGE_PAIR_BASE    = 40   # pairs 40-43: front-flip, front-noflip, other-flip, o
 _IREG_BG_PAIR      = 50   # pair for irregular-fan background tint
 _FILL_PAIR         = 51   # dim fill for visible surface patches
 
-# (r, g, b) in 0–1000 range for curses
+# (r, g, b) in 0-1000 range for curses
 _VIRIDIS_KEYS: list[tuple[int, int, int]] = [
     (267,   4, 329),
     (231, 322, 545),
@@ -57,7 +57,7 @@ def _viridis_rgb(t: float) -> tuple[int, int, int]:
     Returns
     -------
     tuple[int, int, int]
-        ``(r, g, b)`` in the 0–1000 range used by curses ``init_color``.
+        ``(r, g, b)`` in the 0-1000 range used by curses ``init_color``.
     """
     t  = max(0.0, min(1.0, t))
     s  = t * (len(_VIRIDIS_KEYS) - 1)

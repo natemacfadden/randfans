@@ -15,7 +15,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # =============================================================================
 
-"""Tests for renderer/ (pure functions only — no curses)."""
+"""Tests for renderer/ (pure functions only -- no curses)."""
 
 from __future__ import annotations
 
@@ -130,7 +130,7 @@ def test_project_returns_two_floats(std_basis) -> None:
 
 def test_project_e1_direction(std_basis) -> None:
     p, e1, e2 = std_basis
-    # vector in e1 direction → positive y, zero x
+    # vector in e1 direction -> positive y, zero x
     x, y = _project(np.array([0.0, 1.0, 1.0]), p, e1, e2)
     assert y > 0.0
     assert abs(x) < 1e-10
@@ -138,7 +138,7 @@ def test_project_e1_direction(std_basis) -> None:
 
 def test_project_e2_direction(std_basis) -> None:
     p, e1, e2 = std_basis
-    # vector in e2 direction → positive x, zero y
+    # vector in e2 direction -> positive x, zero y
     x, y = _project(np.array([1.0, 0.0, 1.0]), p, e1, e2)
     assert x > 0.0
     assert abs(y) < 1e-10
@@ -157,7 +157,7 @@ def test_project_proportional_to_scale(std_basis) -> None:
 
 def test_project_near_horizon_not_none(std_basis) -> None:
     p, e1, e2 = std_basis
-    # vector nearly perpendicular to p — still in front hemisphere
+    # vector nearly perpendicular to p -- still in front hemisphere
     v = np.array([1.0, 0.0, 0.1])
     assert _project(v, p, e1, e2) is not None
 
@@ -243,7 +243,7 @@ def flat_tri():
 
 def test_p_surface_collinear_with_p(flat_tri) -> None:
     ps = _compute_p_surface(flat_tri["p"], flat_tri["v0"], flat_tri["n"])
-    # p_surface must be a scalar multiple of p → cross product is zero
+    # p_surface must be a scalar multiple of p -> cross product is zero
     cross = np.cross(ps, flat_tri["p"])
     np.testing.assert_allclose(cross, np.zeros(3), atol=1e-10)
 
@@ -256,14 +256,14 @@ def test_p_surface_lies_on_face_plane(flat_tri) -> None:
 
 
 def test_p_surface_degenerate_returns_p(flat_tri) -> None:
-    # ray perpendicular to face normal → fallback to p
+    # ray perpendicular to face normal -> fallback to p
     p_perp = np.array([0.0, 1.0, 0.0])
     ps = _compute_p_surface(p_perp, flat_tri["v0"], flat_tri["n"])
     np.testing.assert_allclose(ps, p_perp, atol=1e-10)
 
 
 def test_p_surface_known_value(flat_tri) -> None:
-    # face at x=1, p=[1,0,0] → intersection at x=1, so p_surface = [1,0,0]
+    # face at x=1, p=[1,0,0] -> intersection at x=1, so p_surface = [1,0,0]
     ps = _compute_p_surface(flat_tri["p"], flat_tri["v0"], flat_tri["n"])
     np.testing.assert_allclose(ps, np.array([1.0, 0.0, 0.0]), atol=1e-10)
 
@@ -285,7 +285,7 @@ def test_pixel_row_center_equals_screen_center(flat_tri) -> None:
     scale   = 10.0
     sc      = np.array([2.0, 0.0, 0.0])
     c_arr   = np.arange(80, dtype=float)
-    # row == cy, col == cx → s=0, u=0 → position should equal screen_center
+    # row == cy, col == cx -> s=0, u=0 -> position should equal screen_center
     row_pos = _pixel_row_positions(cy, c_arr, sc, flat_tri["e1"], flat_tri["e2"],
                                     scale, cx, cy)
     center_col = cx  # c_arr[cx] = cx
@@ -295,7 +295,7 @@ def test_pixel_row_center_equals_screen_center(flat_tri) -> None:
 def test_pixel_row_positions_vary_along_e2(flat_tri) -> None:
     sc    = np.zeros(3)
     c_arr = np.array([0.0, 1.0, 2.0])
-    # scale=1, cx=0 → u = c/(2) increments of 0.5; positions differ along e2
+    # scale=1, cx=0 -> u = c/(2) increments of 0.5; positions differ along e2
     out   = _pixel_row_positions(0, c_arr, sc, flat_tri["e1"], flat_tri["e2"],
                                   1.0, 0, 0)
     # each step in c should shift by e2/2
@@ -322,7 +322,7 @@ def test_sphere_row_hits_center_pixel() -> None:
 
 def test_sphere_row_hits_miss_returns_inf() -> None:
     p         = np.array([0.0, 0.0, 1.0])
-    # Far corner: offset of 2 units in each tangent direction → misses unit sphere
+    # Far corner: offset of 2 units in each tangent direction -> misses unit sphere
     pixel_row = np.array([[2.0, 2.0, 2.0]])
     t         = _sphere_row_hits(pixel_row, p)
     assert not np.isfinite(t[0])
@@ -380,12 +380,12 @@ def test_shadow_not_blocked_when_skip_ct(flat_tri) -> None:
     v0s, v1s, v2s = _make_verts(flat_tri["v0"], flat_tri["v1"], flat_tri["v2"])
     hit_pos = np.array([0.0, 0.1, 0.1])
     target  = np.array([5.0, 0.1, 0.1])
-    # Skip the only blocker (index 0) → not blocked
+    # Skip the only blocker (index 0) -> not blocked
     assert not _shadow_blocked(hit_pos, target, v0s, v1s, v2s, skip_idx=0)
 
 
 def test_shadow_not_blocked_past_target(flat_tri) -> None:
-    # Triangle at x=3, target at x=2 → blocker is behind target
+    # Triangle at x=3, target at x=2 -> blocker is behind target
     v0 = np.array([3.0, 0.0, 0.0])
     v1 = np.array([3.0, 1.0, 0.0])
     v2 = np.array([3.0, 0.0, 1.0])

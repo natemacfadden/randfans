@@ -16,7 +16,7 @@
 # =============================================================================
 
 """
-grow2d — standalone port from CYTools face_triangulations.py.
+grow2d -- standalone port from CYTools face_triangulations.py.
 
 Original: cytools/ntfe/face_triangulations.py @ 1e09ca4
 Backend: pure Python + NumPy (C port planned later).
@@ -47,7 +47,7 @@ def grow2d(
 
     Returns
     -------
-    Set of 3-tuples (i, j, k) with i<j<k — the simplices of the FT.
+    Set of 3-tuples (i, j, k) with i<j<k -- the simplices of the FT.
     Returns a partial triangulation on failure (should be rare).
     """
     if seed is None:

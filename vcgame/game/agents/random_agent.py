@@ -16,22 +16,22 @@
 # =============================================================================
 
 """
-Random agent: navigates the fan along a Lévy walk on S².
+Random agent: navigates the fan along a Lévy walk on S2.
 
 Each segment is a circular arc whose length and curvature are
 drawn independently. Arc lengths follow a Pareto distribution
 (power-law tail); curvatures follow a log-normal distribution
-centred at κ ≈ 1, corresponding to a turn radius of ≈ 57°.
-With log-std 0.7, 68 % of arcs have radii in [28°, 115°],
+centred at kappa ~ 1, corresponding to a turn radius of ~ 57 deg.
+With log-std 0.7, 68 % of arcs have radii in [28 deg, 115 deg],
 giving smooth medium-scale curves as the dominant behaviour
 while still occasionally producing tight spirals or near-
 straight sweeps.
 
 The fractal character comes from the Pareto arc-length
-distribution: as the exponent α → 1, arcs become arbitrarily
-long and the path approaches a Lévy flight. For 1 < α < 2 the
+distribution: as the exponent alpha -> 1, arcs become arbitrarily
+long and the path approaches a Lévy flight. For 1 < alpha < 2 the
 walk is superdiffusive (mean displacement grows faster than
-√t); for α > 2 it recovers ordinary diffusion at large scales.
+sqrt(t)); for alpha > 2 it recovers ordinary diffusion at large scales.
 """
 
 from __future__ import annotations
@@ -46,16 +46,16 @@ if TYPE_CHECKING:
 
 
 _L_MIN        = 0.2   # minimum arc length (radians)
-_LOG_K_MU     = 0.0   # log-curvature mean  → κ ≈ 1.0  (≈ 57° radius)
-_LOG_K_SIG    = 0.7   # log-curvature std   → 68 % of radii in [28°, 115°]
+_LOG_K_MU     = 0.0   # log-curvature mean  -> kappa ~ 1.0  (~ 57 deg radius)
+_LOG_K_SIG    = 0.7   # log-curvature std   -> 68 % of radii in [28 deg, 115 deg]
 _MAX_TURN_STEP = 0.08  # max heading rotation (rad) per advance call
 
 
 class RandomAgent:
-    """Navigates a player along Lévy-walk arcs on S².
+    """Navigates a player along Lévy-walk arcs on S2.
 
     Arc lengths are Pareto-distributed; curvatures are log-normal, centred
-    at a medium turn radius (≈ 57°) so the path is dominated by smooth arcs
+    at a medium turn radius (~ 57 deg) so the path is dominated by smooth arcs
     with occasional tight or sweeping excursions.
 
     Parameters
@@ -131,7 +131,7 @@ class RandomAgent:
         log_kappa   = np.random.normal(_LOG_K_MU, _LOG_K_SIG)
         sign        = float(np.random.choice([-1.0, 1.0]))
         self._kappa = sign * np.exp(log_kappa)
-        # Cap arc to avoid long spirals (≤ ~216° of heading rotation).
+        # Cap arc to avoid long spirals (<= ~216 deg of heading rotation).
         self._arc_remaining = min(
             self._arc_remaining, 1.2 * np.pi / abs(self._kappa)
         )

@@ -22,7 +22,7 @@ _CP_FACE       = 7   # simplex face fill (cyan)
 _CP_HIGHLIGHT  = 8   # highlighted simplex edges
 _CP_FACE_FRONT = 9   # front-facing simplex face (green)
 
-# Fill character progressions per face type (sparse → dense).
+# Fill character progressions per face type (sparse -> dense).
 # Face type = face_idx % 4.
 _FACE_FILL_TYPES = [
     list("⠁⠃⠇⡇⣇⣷⣿"),   # 0: braille dots  (7 levels)
@@ -221,7 +221,7 @@ def draw(
         # "any_behind" faces wrap around the viewport and always cover the crosshair;
         # among those, the one with highest mean_z (drawn last) wins.
         # Otherwise, use whichever face's screen-space arc centroid is closest to
-        # (0, 0) — the normalised screen centre where the crosshair sits.
+        # (0, 0) -- the normalised screen centre where the crosshair sits.
         behind_candidates = [(mz, fi) for mz, ab, fi, pr, ca in face_data if ab]
         if behind_candidates:
             front_face_idx = max(behind_candidates, key=lambda t: t[0])[1]
@@ -321,7 +321,7 @@ def _draw_hud(scr, rows: int, cols: int, player: Player3D, hud: bool = True) -> 
         f"up ({up[0]:+5.2f}, {up[1]:+5.2f}, {up[2]:+5.2f})  "
         f"spd {player.speed:.2f}"
     )
-    line1 = "[↑↓] pitch   [←→] yaw   [q/e] roll   [w/s] thrust   [a/d] strafe   [r/f] lift"
+    line1 = "[^v] pitch   [<>] yaw   [q/e] roll   [w/s] thrust   [a/d] strafe   [r/f] lift"
     line2 = "[+/-] speed  [space] brake  [H]UD on  [esc] quit"
 
     _addstr(scr, r0,     0, line0[:cols - 1], attr_hud)

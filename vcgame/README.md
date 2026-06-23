@@ -39,9 +39,9 @@ python main.py --shape cube --n 5 --color 1
 
 | Name | Description | Parameters |
 |---|---|---|
-| `cube` | Boundary lattice points of an n×n×n integer cube | `--n` (odd, ≥ 3, **required**) |
+| `cube` | Boundary lattice points of an nxnxn integer cube | `--n` (odd, >= 3, **required**) |
 | `random` | Random centrally-symmetric lattice vectors on convex hull | `--seed` |
-| `reflexive` | Lattice points of a 3D reflexive polytope (4319 available) | `--polytope_id` (0–4318) |
+| `reflexive` | Lattice points of a 3D reflexive polytope (4319 available) | `--polytope_id` (0-4318) |
 | `trunc_oct` | Vertices of the truncated octahedron | none |
 
 ## Development note

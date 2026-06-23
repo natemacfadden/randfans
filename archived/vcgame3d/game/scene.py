@@ -20,7 +20,7 @@ _CUBE_EDGES = [
 _AXIS_PTS   = [(0,0,0), (2,0,0), (0,2,0), (0,0,2)]
 _AXIS_EDGES = [(0,1), (0,2), (0,3)]   # x, y, z
 
-# ── ground grid (xz plane, y=−1, from −3 to 3 step 1) ───────────────
+# ── ground grid (xz plane, y=-1, from -3 to 3 step 1) ───────────────
 def _make_grid(y=-1.0, lo=-3, hi=3):
     pts, edges = [], []
     # x lines (varying x, fixed z)
@@ -43,7 +43,7 @@ _GRID_PTS, _GRID_EDGES = _make_grid(y=0.0)
 def build_scene():
     """Return (points, edges, edge_styles) for the full reference scene.
 
-    edge_styles: list of str, one per edge — 'cube', 'axis', 'grid'
+    edge_styles: list of str, one per edge -- 'cube', 'axis', 'grid'
     """
     pts    = []
     edges  = []

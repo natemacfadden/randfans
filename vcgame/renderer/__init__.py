@@ -15,6 +15,6 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # =============================================================================
 
-"""ASCII renderer for the fan on S²."""
+"""ASCII renderer for the fan on S2."""
 from .renderer import Renderer
 from .colors import _init_colors

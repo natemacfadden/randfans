@@ -19,8 +19,8 @@
 Generate integer vectors from the vertices of the truncated octahedron
 (permutohedron).
 
-The 24 vertices are all distinct points of the form (0, ±1, ±2)
-and its permutations. The shape tiles R³ by translation, has 36
+The 24 vertices are all distinct points of the form (0, +/-1, +/-2)
+and its permutations. The shape tiles R3 by translation, has 36
 edges and 14 faces (8 regular hexagons + 6 squares), and gives a
 richer fan structure than the cube.
 """
@@ -33,7 +33,7 @@ from itertools import permutations
 def trunc_oct_vectors() -> list[list[int]]:
     """Return the 24 vertices of the truncated octahedron.
 
-    Returns all distinct permutations of (0, ±1, ±2).
+    Returns all distinct permutations of (0, +/-1, +/-2).
 
     Returns
     -------

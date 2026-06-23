@@ -16,7 +16,7 @@
 # =============================================================================
 
 """
-Player in R³ described by spherical coordinates (r, θ, φ), with heading in
+Player in R3 described by spherical coordinates (r, theta, phi), with heading in
 the tangent plane of the angular part.
 """
 
@@ -44,15 +44,15 @@ def _cartesian_to_angles(d: np.ndarray) -> tuple[float, float]:
 
 class Player:
     """
-    A player in R³ with position stored as spherical coordinates.
+    A player in R3 with position stored as spherical coordinates.
 
-    Position is stored as ``(r, θ, φ)`` and a unit heading in the tangent
-    plane at the angular direction ``(θ, φ)``.
+    Position is stored as ``(r, theta, phi)`` and a unit heading in the tangent
+    plane at the angular direction ``(theta, phi)``.
 
     Parameters
     ----------
     position : np.ndarray
-        Non-zero 3-vector — direction used to compute ``θ, φ``.
+        Non-zero 3-vector -- direction used to compute ``theta, phi``.
     heading : np.ndarray
         Non-zero 3-vector projected onto the tangent plane at the angular
         direction.
@@ -64,11 +64,11 @@ class Player:
     Attributes
     ----------
     position : np.ndarray
-        ``[r, θ, φ]`` — spherical coordinates.
+        ``[r, theta, phi]`` -- spherical coordinates.
     cartesian : np.ndarray
-        ``[x, y, z]`` — Cartesian position, derived from ``position``.
+        ``[x, y, z]`` -- Cartesian position, derived from ``position``.
     radius : float
-        Positive scalar ``r`` — distance from the origin.
+        Positive scalar ``r`` -- distance from the origin.
     height : float
         Small offset above the polytope surface.
     heading : np.ndarray
@@ -131,7 +131,7 @@ class Player:
 
     @property
     def _direction(self) -> np.ndarray:
-        """Unit vector corresponding to the angular part ``(θ, φ)``."""
+        """Unit vector corresponding to the angular part ``(theta, phi)``."""
         _, theta, phi = self._position
         st = np.sin(theta)
         return np.array([st * np.cos(phi), st * np.sin(phi), np.cos(theta)])
@@ -147,7 +147,7 @@ class Player:
 
     @property
     def position(self) -> np.ndarray:
-        """Spherical coordinates ``[r, θ, φ]`` (read-only copy)."""
+        """Spherical coordinates ``[r, theta, phi]`` (read-only copy)."""
         return self._position.copy()
 
     @property
@@ -225,7 +225,7 @@ class Player:
         if n_norm < 1e-12 or abs(denom) < 1e-10:
             warnings.warn(
                 f"surface_radius: degenerate cone {cone} "
-                f"(|n|={n_norm:.2e}, n·d={denom:.2e}); "
+                f"(|n|={n_norm:.2e}, n.d={denom:.2e}); "
                 f"keeping previous radius"
             )
             return float(self._position[0])
@@ -236,7 +236,7 @@ class Player:
     ) -> tuple[int, int] | None:
         """Advance along the great circle by ``step`` radians.
 
-        Updates ``(θ, φ)`` and, if ``fan`` is provided, sets
+        Updates ``(theta, phi)`` and, if ``fan`` is provided, sets
         ``r = surface_radius(fan) + height``.
 
         Parameters
@@ -371,9 +371,9 @@ class Player:
                 best_margin = margin
                 best_cone   = cone
                 if margin >= 0:
-                    return cone   # strict interior — no need to keep searching
+                    return cone   # strict interior -- no need to keep searching
         if best_cone is not None and best_margin > -1e-6:
-            return best_cone      # on or near a wall — return closest cone
+            return best_cone      # on or near a wall -- return closest cone
         raise ValueError("position is not contained in any cone of the fan")
 
     def find_circuit_for_crossing(
@@ -448,7 +448,7 @@ class Player:
         x, y, z = self.cartesian
         h = self._heading
         return (
-            f"Player(r={r:.4f}, θ={theta:.4f}, φ={phi:.4f} | "
+            f"Player(r={r:.4f}, theta={theta:.4f}, phi={phi:.4f} | "
             f"xyz=[{x:.4f}, {y:.4f}, {z:.4f}] | "
             f"heading=[{h[0]:.4f}, {h[1]:.4f}, {h[2]:.4f}] | "
             f"height={self._height:.4f})"
