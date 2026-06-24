@@ -1,3 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vcgame"
+version = "0.1.0"
+description = "Interactive terminal game for navigating triangulations of 3D lattice vector configurations, with a curses-based ASCII ray-caster"
+authors = [{ name = "Nate MacFadden" }]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.9"
+
+dependencies = [
+    "numpy",
+    "numba",
+    "scipy",
+    "regfans",
+]
+
+[project.optional-dependencies]
+input = ["pynput"]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["shapes", "renderer", "game"]
+
 [tool.black]
 line-length = 88
 

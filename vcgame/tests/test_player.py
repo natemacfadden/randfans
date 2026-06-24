@@ -215,7 +215,9 @@ def test_move_no_fan_returns_none() -> None:
 
 
 def test_move_no_crossing_returns_none(fan3: Fan) -> None:
-    p = Player([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
+    # start strictly interior to a cone -- a lattice vector like [1,0,0] sits on
+    # a cone wall, so an infinitesimal move would cross a facet
+    p = Player([1.0, 0.2, 0.1], [0.0, 1.0, 0.0])
     assert p.move(1e-6, fan3) is None
 
 

@@ -126,7 +126,7 @@ def _parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     p.add_argument(
         "--once",
         action="store_true",
-        help="Render a single frame then exit (useful for benchmarking).",
+        help="Render a single frame then exit.",
     )
     return p, p.parse_args()
 

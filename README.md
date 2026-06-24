@@ -17,9 +17,9 @@ pynput is also installed.
 
 ```bash
 cd vcgame
-python main.py --shape cube --n 5
+python main.py --shape cube -n 5
 python main.py --shape trunc_oct
-python main.py --shape reflexive --polytope_id 7
+python main.py --shape reflexive --polytope 7
 ```
 
 `vcgame` was built with [Claude Code](https://claude.ai/claude-code).
